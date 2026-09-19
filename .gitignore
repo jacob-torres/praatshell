@@ -1,0 +1,11 @@
+# This repository is public, so recordings stay out of it: the class files hold
+# another speaker's voice, and generated reports are coursework.
+*.wav
+*.Collection
+*.TextGrid
+reports/
+sounds/
+
+__pycache__/
+*.pyc
+.venv/
