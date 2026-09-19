@@ -333,7 +333,26 @@ class Shell(cmd.Cmd):
                     f"  About {s['cycles']:.0f} cycles at a mean period of "
                     f"{s.get('period', 0) * 1000:.1f} milliseconds."
                 )
-        self.say(*lines[:6])
+
+        loud = [r for r in regions if r.kind != events.SILENCE]
+        if not loud:
+            self.say("This stretch is silent throughout.")
+        else:
+            biggest = max(loud, key=lambda r: r.stats.get("peak_amp") or 0)
+            s = biggest.stats
+            spoken = [
+                f"Loudest point: {fmt.amp(s.get('peak_amp', 0))} at "
+                f"{fmt.secs(frames.absolute(s.get('peak_time', biggest.start)))}, "
+                f"in {fmt.article(events.PLAIN[biggest.kind])} region."
+            ]
+            if s.get("cycles"):
+                spoken.append(
+                    f"That region holds about {s['cycles']:.0f} cycles at a mean "
+                    f"period of {s['period'] * 1000:.1f} milliseconds."
+                )
+            if "attack" in s:
+                spoken.append(f"Its envelope {describe.envelope_phrase(s)}.")
+            self.say(*spoken)
         self.write_report(lines, suffix="wave", layers=["intensity"], frames=frames)
 
     def do_pitch(self, arg):
@@ -806,7 +825,11 @@ class Shell(cmd.Cmd):
         elif parts[0] == "script":
             if len(parts) < 2:
                 raise SessionError("Say praat script, then the script's filename.")
-            self.say(praatbridge.run_script(parts[1], parts[2:]))
+            rest = list(parts[2:])
+            trust = "trust" in rest
+            if trust:
+                rest.remove("trust")
+            self.say(praatbridge.run_script(parts[1], rest, trust=trust))
         else:
             raise SessionError("praat takes either gui or script.")
 

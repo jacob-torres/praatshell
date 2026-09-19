@@ -52,6 +52,10 @@ def amp(x):
     return f"{x:.3f} of full scale"
 
 
+def article(phrase):
+    return ("an " if phrase[:1].lower() in "aeiou" else "a ") + phrase
+
+
 def join(items):
     """'a, b and c' - reads better aloud than 'a, b, c'."""
     items = list(items)

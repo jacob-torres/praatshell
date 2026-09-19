@@ -9,3 +9,4 @@ sounds/
 __pycache__/
 *.pyc
 .venv/
+praat_measurements.txt

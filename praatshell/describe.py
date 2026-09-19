@@ -187,17 +187,7 @@ def _amplitude_lines(s):
     if s.get("clipped"):
         lines.append("  Warning: this region touches full scale and may be clipped.")
     if "attack" in s:
-        parts = []
-        if s["attack"] >= 0.005:
-            parts.append(f"rises over the first {fmt.ms(s['attack'])}")
-        else:
-            parts.append("starts already at its loudest")
-        parts.append(f"holds near its peak for {fmt.ms(s['steady'])}")
-        if s["decay"] >= 0.005:
-            parts.append(f"falls away over the last {fmt.ms(s['decay'])}")
-        else:
-            parts.append("is cut off while still loud")
-        lines.append(f"  Envelope shape: it {', then '.join(parts)}.")
+        lines.append(f"  Envelope shape: it {envelope_phrase(s)}.")
     if s.get("asymmetry") is not None and abs(s["asymmetry"]) > 0.25:
         direction = "positive" if s["asymmetry"] > 0 else "negative"
         lines.append(
@@ -205,6 +195,21 @@ def _amplitude_lines(s):
             "one side of zero than the other."
         )
     return lines
+
+
+def envelope_phrase(s):
+    """How the loudness rises, holds and falls, skipping the zero-length parts."""
+    parts = []
+    if s["attack"] >= 0.005:
+        parts.append(f"rises over the first {fmt.ms(s['attack'])}")
+    else:
+        parts.append("starts already at its loudest")
+    parts.append(f"holds near its peak for {fmt.ms(s['steady'])}")
+    if s["decay"] >= 0.005:
+        parts.append(f"falls away over the last {fmt.ms(s['decay'])}")
+    else:
+        parts.append("is cut off while still loud")
+    return ", then ".join(parts)
 
 
 def _band_lines(s, frames):

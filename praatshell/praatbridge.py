@@ -25,21 +25,47 @@ def find():
     )
 
 
-def run_script(path, args=()):
-    """Run a .praat script and return whatever it printed."""
+def run_script(path, args=(), trust=False):
+    """Run a .praat script and return whatever it printed.
+
+    trust adds Praat's --FULL-TRUST, which is what lets a script write files.
+    It stays off by default: it is the flag that removes Praat's own guard
+    against a script touching the disk, and it should be a deliberate choice.
+    """
     if not os.path.exists(path):
         raise FileNotFoundError(f"There is no script at {path}.")
-    result = subprocess.run(
-        [find(), "--run", os.path.abspath(path), *[str(a) for a in args]],
-        capture_output=True,
-        text=True,
-        timeout=300,
-    )
-    output = (result.stdout or "").strip()
-    if result.returncode != 0:
-        error = (result.stderr or "").strip()
-        return f"Praat reported an error.\n{error or output}"
+    command = [find()]
+    if trust:
+        command.append("--FULL-TRUST")
+    command += ["--run", os.path.abspath(path), *[str(a) for a in args]]
+
+    result = subprocess.run(command, capture_output=True, timeout=300)
+    output = _decode(result.stdout).strip()
+    error = _decode(result.stderr).strip()
+
+    if result.returncode != 0 or "not completed" in output:
+        message = f"Praat reported a problem.\n{error or output}"
+        if "FULL-TRUST" in output or "FULL-TRUST" in error:
+            message += (
+                "\nThat script tried to write a file, which Praat blocks unless "
+                "you allow it. To allow it, say: praat script "
+                f"{os.path.basename(path)} trust"
+            )
+        return message
     return output or "The script ran and printed nothing."
+
+
+def _decode(raw):
+    """Praat on Windows prints UTF-16, which the usual decoders mangle."""
+    if not raw:
+        return ""
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff") or raw.count(b"\x00") > len(raw) // 4:
+        for encoding in ("utf-16", "utf-16-le"):
+            try:
+                return raw.decode(encoding)
+            except UnicodeDecodeError:
+                pass
+    return raw.decode("utf-8", errors="replace")
 
 
 def open_gui(sound, name="sound"):
