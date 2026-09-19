@@ -20,6 +20,13 @@ def _dir(root):
     return path
 
 
+def _csv_dir(root):
+    """Numbers live in reports/csv, so the reports folder itself stays readable."""
+    path = os.path.join(_dir(root), "csv")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 def header(sound_name, source, start, end):
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     return [
@@ -49,8 +56,30 @@ def write(root, sound_name, source, start, end, lines, frames=None, suffix="", l
     written.append(txt)
 
     if frames is not None:
-        written += _write_csvs(folder, base, frames, layers)
+        written += _write_csvs(_csv_dir(root), base, frames, layers)
     return written
+
+
+def write_summary(root, sound_name, lines):
+    """The whole-sound summary, named so it sorts ahead of the timed reports."""
+    path = os.path.join(_dir(root), f"{sound_name}.txt")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    return path
+
+
+def related_files(root, sound_name):
+    """Every report already written for this sound, for the summary's index."""
+    folder = _dir(root)
+    prefix = f"{sound_name}__"
+    texts = sorted(
+        f for f in os.listdir(folder) if f.startswith(prefix) and f.endswith(".txt")
+    )
+    csv_folder = _csv_dir(root)
+    csvs = sorted(
+        f for f in os.listdir(csv_folder) if f.startswith(prefix) and f.endswith(".csv")
+    )
+    return texts, csvs
 
 
 def _write_csvs(folder, stem, frames, layers=None):

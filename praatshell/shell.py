@@ -300,6 +300,26 @@ class Shell(cmd.Cmd):
         )
         self.say(*describe.summary(frames, regions, start, end))
         self.write_report(lines, frames=frames)
+        self.write_whole_summary()
+
+    def write_whole_summary(self):
+        """Refresh the whole-sound summary, which indexes the timed reports."""
+        name = self.session.current
+        sound = self.session.sound()
+        start, end = self.session.selection()
+        if start <= 0 and end >= sound.duration:
+            frames, regions = self.analysed()  # the selection is the whole sound
+        else:
+            frames = analysis.analyze_window(sound, 0.0, sound.duration)
+            regions = events.classify(frames)
+        texts, csvs = report.related_files(self.root, name)
+        lines = describe.whole_sound_summary(
+            frames, regions, name, self.source_of(name), texts, csvs
+        )
+        path = report.write_summary(self.root, name, lines)
+        self.say(
+            f"Whole-sound summary refreshed: {os.path.relpath(path, self.root)}."
+        )
 
     def do_events(self, arg):
         """events. The timeline of regions, without the detail."""

@@ -85,13 +85,25 @@ every time.
 
 WHAT GETS WRITTEN
 
-Everything lands in the reports folder beside this file.
+Descriptions land in the reports folder beside this file. Numbers go one level
+down, in reports/csv, so the reports folder stays a list of things to read.
 
-    NAME__START-ENDms.txt            the prose description
-    NAME__START-ENDms_pitch.csv      fundamental frequency, frame by frame
-    NAME__START-ENDms_formants.csv   F1, F2, F3
-    NAME__START-ENDms_intensity.csv  loudness in decibels
-    NAME__START-ENDms_bands.csv      energy per frequency band
+    reports/
+      NAME.txt                           the whole-sound summary
+      NAME__START-ENDms.txt              the prose description of one stretch
+      NAME__START-ENDms_pitch.txt        single-layer reports, as you ask for them
+      csv/
+        NAME__START-ENDms_pitch.csv      fundamental frequency, frame by frame
+        NAME__START-ENDms_formants.csv   F1, F2, F3
+        NAME__START-ENDms_intensity.csv  loudness in decibels
+        NAME__START-ENDms_bands.csv      energy per frequency band
+
+NAME.txt is the one to open first. Its name has no time span in it, so it sorts
+above every other file for that sound. describe rewrites it each time, and it
+always covers the entire recording even when you were describing a short
+selection: an overview, a one-line reading of every region with its confidence,
+the pitch and loudness contours, and an index of every other report written for
+that sound.
 
 The CSV files open in R or a spreadsheet. The pitch CSV has two columns for
 frequency: f0_hz, with octave errors removed, and f0_raw_hz exactly as Praat

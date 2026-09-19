@@ -7,9 +7,11 @@ Two rules govern this module:
    carries a confidence, the reason for it, and the runner-up reading.
 """
 
+import datetime
+
 import numpy as np
 
-from . import events, fmt
+from . import analysis, events, fmt
 
 # Adult male averages (Peterson and Barney). Formants scale with vocal tract
 # length, so these fit a smaller or larger speaker badly - which is exactly why
@@ -399,6 +401,67 @@ def full_report(frames, regions, sound_name, start, end):
     return lines
 
 
+def whole_sound_summary(frames, regions, sound_name, source, texts=(), csvs=()):
+    """A short orientation to the entire recording, plus what else was written.
+
+    describe works on a selection, so this is the file that answers "what is in
+    this recording at all" - one line per region with the tool's reading of it,
+    and an index of the detailed reports.
+    """
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    start, end = frames.window
+    lines = [
+        f"WHOLE SOUND SUMMARY: {sound_name}",
+        "",
+        f"Written by praatshell on {now}.",
+        f"Source file: {source or 'created in this session'}.",
+        f"Analysis settings: {analysis.SETTINGS.describe()}.",
+        "",
+        "This file describes the entire recording. The other files listed at the "
+        "end describe whichever stretch was selected at the time.",
+        "",
+    ]
+    lines += overview(frames, sound_name, frames.absolute(start), frames.absolute(end))
+    lines += ["", f"TIMELINE: {len(regions)} regions across the whole recording.", ""]
+
+    for i, region in enumerate(regions, 1):
+        guess = guess_region(region, frames)
+        lines.append(
+            f"Region {i}: {frames.absolute(region.start):.3f} to "
+            f"{frames.absolute(region.end):.3f} seconds, "
+            f"{fmt.duration(region.duration)}, {events.PLAIN[region.kind]}."
+        )
+        s = region.stats
+        detail = []
+        # Formant tracking returns numbers for silence and noise too, but they
+        # describe nothing. Only quote them where they mean something.
+        if region.kind == events.VOICED:
+            if s.get("f0"):
+                detail.append(f"F0 {s['f0']:.0f} hertz")
+            if s.get("f1") and s.get("f2"):
+                detail.append(f"F1 {s['f1']:.0f}, F2 {s['f2']:.0f} hertz")
+        elif region.kind != events.SILENCE and s.get("cog"):
+            detail.append(f"energy centred at {s['cog']:.0f} hertz")
+        if s.get("intensity_mean"):
+            detail.append(f"mean level {s['intensity_mean']:.0f} decibels")
+        if detail:
+            lines.append(f"  MEASURED: {fmt.join(detail)}.")
+        lines.append(f"  LIKELY: {guess.claim}. Confidence: {guess.level}.")
+
+    lines += [""] + contour_summary(frames)
+
+    lines += ["", "OTHER REPORTS FOR THIS SOUND"]
+    if texts:
+        lines.append("Descriptions, in the reports folder:")
+        lines += [f"  {name}" for name in texts]
+    if csvs:
+        lines.append("Measurements, in the reports csv folder:")
+        lines += [f"  {name}" for name in csvs]
+    if not texts and not csvs:
+        lines.append("None yet. Select a stretch and use describe to make one.")
+    return lines
+
+
 def contour_summary(frames):
     """Pitch and loudness across the whole stretch, not region by region."""
     lines = ["MEASURED: the stretch as a whole"]
@@ -473,17 +536,38 @@ def _overall_shape(f0):
 
 
 def _count_peaks(intensity, prominence=None):
+    """Count loudness peaks that stand clear of the dips beside them.
+
+    Measuring a peak against the quietest point anywhere in the recording
+    counts every ripple; it has to be measured against the troughs immediately
+    around it. This walks the curve and only registers a peak once the level
+    has fallen back by the full prominence, then waits for an equal rise before
+    looking for the next one.
+    """
     prominence = PEAK_PROMINENCE if prominence is None else prominence
-    v = np.where(np.isnan(intensity), -np.inf, intensity)
+    v = intensity[~np.isnan(intensity)]
     if v.size < 3:
         return 0
+    # Bracket with the quietest level so a peak at either end still falls away.
+    v = np.concatenate(([v.min()], v, [v.min()]))
+
     count = 0
-    for i in range(1, v.size - 1):
-        if v[i] >= v[i - 1] and v[i] > v[i + 1]:
-            left = v[:i].min() if i else v[i]
-            right = v[i + 1 :].min()
-            if v[i] - max(left, right) >= prominence:
+    climbing = True
+    best = trough = v[0]
+    for x in v:
+        if climbing:
+            if x > best:
+                best = x
+            elif best - x >= prominence:
                 count += 1
+                climbing = False
+                trough = x
+        else:
+            if x < trough:
+                trough = x
+            elif x - trough >= prominence:
+                climbing = True
+                best = x
     return count
 
 
