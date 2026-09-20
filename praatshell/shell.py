@@ -59,12 +59,33 @@ HELP = [
     ("normalize", "Scale the peak up to just under full scale."),
     ("concat A B", "Join loaded sounds end to end into a new sound."),
     ("", ""),
+    ("autoplay off", "Stop playing the sound automatically after a change."),
+    ("autoplay on", "Resume playing it automatically. On by default."),
     ("set NAME VALUE", "Change pitchfloor, pitchceiling or formantceiling."),
     ("settings", "Say the current analysis settings."),
     ("praat gui", "Open the current sound in the real Praat program."),
     ("praat script FILE", "Run a .praat script and read back what it printed."),
     ("quit", "Leave."),
+    ("", ""),
+    ("(press enter alone)", "Repeat the previous command."),
 ]
+
+# After these succeed, the sound as it now stands is played back. Edits are held
+# in memory: the file on disk only changes when you use save.
+AUTOPLAY = {
+    "select",
+    "undo",
+    "cut",
+    "paste",
+    "swap",
+    "splice",
+    "stretch",
+    "pitchshift",
+    "flatten",
+    "reverse",
+    "normalize",
+    "concat",
+}
 
 
 class Shell(cmd.Cmd):
@@ -78,6 +99,7 @@ class Shell(cmd.Cmd):
         self.session = Session(root)
         self.root = root
         self.sources = {}
+        self.autoplay = True
         self._cache = None
         self._set_prompt()
 
@@ -97,16 +119,31 @@ class Shell(cmd.Cmd):
 
     def onecmd(self, line):
         try:
-            return super().onecmd(line)
+            result = super().onecmd(line)
         except SessionError as exc:
             self.say(str(exc))
+            return None
         except Exception as exc:  # a Praat refusal should not end the session
             self.say(f"That did not work: {exc}")
+            return None
+        parts = line.split()
+        # Only after the command succeeded, so a refused edit stays silent.
+        if parts and parts[0] in AUTOPLAY and self.session.current:
+            if parts[0] != "select" or len(parts) > 1:
+                self.play_result()
+        return result
 
     def emptyline(self):
-        pass
+        """Enter on its own repeats the last command, and says which one."""
+        if not self.lastcmd:
+            self.say("There is no previous command to repeat.")
+            return
+        self.say(f"Again: {self.lastcmd}.")
+        return self.onecmd(self.lastcmd)
 
     def default(self, line):
+        # Forget it, so pressing enter does not repeat a command that failed.
+        self.lastcmd = ""
         self.say(f"There is no command called {line.split()[0]}. Type help for the list.")
 
     def do_help(self, arg):
@@ -144,6 +181,19 @@ class Shell(cmd.Cmd):
 
     def source_of(self, name):
         return self.sources.get(name, "")
+
+    def play_result(self):
+        """Play what the sound is now, after a selection or an edit.
+
+        Edits live in memory only: the file on disk is untouched until save.
+        """
+        if not self.autoplay:
+            return
+        try:
+            played = audio.play(self.session.selected())
+            self.say(f"Playing {fmt.duration(played)}.")
+        except Exception as exc:
+            self.say(f"Could not play that: {exc}")
 
     def write_report(self, lines, suffix="", layers=None, frames=None):
         name = self.session.current
@@ -733,7 +783,6 @@ class Shell(cmd.Cmd):
             f"{fmt.duration(span_b[1] - span_b[0])} of {name_b}.",
             f"{name_a} is now {self.session.sound(name_a).duration:.3f} seconds, "
             f"{name_b} is {self.session.sound(name_b).duration:.3f} seconds.",
-            "Type play to hear the current one.",
         )
 
     def do_splice(self, arg):
@@ -811,6 +860,19 @@ class Shell(cmd.Cmd):
         self.say(f"Joined {fmt.join(parts)} into {name}, {joined.duration:.3f} seconds.")
 
     # --- settings and the real Praat ----------------------------------
+
+    def do_autoplay(self, arg):
+        """autoplay on, or autoplay off."""
+        choice = arg.strip().lower()
+        if choice not in ("on", "off", ""):
+            raise SessionError("Say autoplay on, or autoplay off.")
+        if choice:
+            self.autoplay = choice == "on"
+        state = "on" if self.autoplay else "off"
+        self.say(
+            f"Automatic playback is {state}."
+            + ("" if self.autoplay else " Use play to hear a sound yourself.")
+        )
 
     def do_settings(self, arg):
         """settings. Say the current analysis settings."""

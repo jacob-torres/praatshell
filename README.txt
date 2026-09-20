@@ -45,6 +45,10 @@ you load something, then the sound's name.
 
 Type help for the full command list, one command per line.
 
+Pressing enter on its own repeats the previous command. It says "Again:" and
+the command first, so you always know what is about to run. A command that
+failed is not repeated.
+
 
 A FIRST SESSION
 
@@ -128,6 +132,23 @@ EDITING AND SPLICING
 
 swap and splice take sound:label, so you can move a vowel from one word into
 another. undo steps back one change at a time.
+
+Changing a selection, and every edit above, plays the result straight away, so
+you hear what you just did without asking. To work in silence:
+
+    autoplay off      stop playing automatically
+    autoplay on       start again
+    stop              cut off whatever is playing now
+
+Edits are held in memory. Every later command works on the changed sound, and
+keeps doing so until you undo. Nothing on disk changes: the file you loaded is
+never written back, and the only commands that write audio are save and seg
+save. If you want to keep an edit, save it under a new name.
+
+A selection survives an edit that keeps the same length, such as normalize or
+pitchshift, so you stay where you were. An edit that changes the length, such
+as stretch or cut, moves everything after it, so the selection resets to the
+whole sound.
 
     stretch 1.5       make it half again as long, pitch unchanged
     pitchshift 3      raise by three semitones, duration unchanged

@@ -87,11 +87,18 @@ class Session:
         return self.sounds[name]
 
     def replace(self, sound, name=None):
-        """Swap in a new version of a sound, saving the old one for undo."""
+        """Swap in a new version of a sound, saving the old one for undo.
+
+        A selection survives an edit that keeps the same duration, so
+        normalizing or shifting pitch does not lose your place. An edit that
+        changes the length invalidates the old times, so the selection goes.
+        """
         name = name or self.current
         self.push_undo(name)
+        same_length = abs(self.sounds[name].duration - sound.duration) < 1e-6
         self.sounds[name] = sound
-        self.sel = None
+        if name == self.current and not same_length:
+            self.sel = None
 
     # --- selection ----------------------------------------------------
 
