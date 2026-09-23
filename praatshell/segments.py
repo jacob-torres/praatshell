@@ -2,6 +2,7 @@
 
 import os
 
+import numpy as np
 import parselmouth
 from parselmouth.praat import call
 
@@ -12,6 +13,28 @@ def from_regions(regions):
     """Turn an automatic region timeline into numbered, editable segments."""
     return [
         Segment(r.start, r.end, str(i)) for i, r in enumerate(regions, 1)
+    ]
+
+
+def fixed_length(start, end, length):
+    """Cut start..end into numbered segments of one length.
+
+    The last one keeps whatever is left over, so no sound goes unlabelled.
+    A leftover shorter than a tenth of the length is folded into the segment
+    before it rather than standing alone.
+    """
+    if length <= 0:
+        raise SessionError("The segment length must be more than zero.")
+    if length >= end - start:
+        raise SessionError(
+            f"That is longer than the {(end - start) * 1000:.0f} milliseconds "
+            "being split."
+        )
+    edges = [float(t) for t in np.arange(start, end, length)] + [end]
+    if len(edges) > 2 and edges[-1] - edges[-2] < length / 10:
+        del edges[-2]
+    return [
+        Segment(a, b, str(i)) for i, (a, b) in enumerate(zip(edges, edges[1:]), 1)
     ]
 
 

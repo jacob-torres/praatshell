@@ -33,6 +33,9 @@ HIGH, MODERATE, LOW = "high", "moderate", "low"
 _RANK = {HIGH: 2, MODERATE: 1, LOW: 0}
 
 PEAK_PROMINENCE = 10.0  # decibels a loudness peak must stand out by to be counted
+# English aspirated stops rarely pass 120 ms, so a longer gap between a noise
+# and the voicing after it is probably not a release and its vowel at all.
+VOT_IMPLAUSIBLE = 0.120
 TOO_SHORT = "measurable over too few frames to characterise"
 
 
@@ -384,11 +387,406 @@ def _nearest_vowel(f1, f2):
     return best, second, ratio
 
 
+# --- voice onset time -------------------------------------------------
+
+
+def vot_at(regions, index):
+    """Voice onset time for the voiced region at index.
+
+    The release is the run of non-silent, non-voiced regions immediately
+    before the voicing: the burst, plus any aspiration or frication that
+    follows it before the voice starts. A burst that runs straight into
+    aspiration is often too long to be labelled a burst, so the label is not
+    what identifies it - its position is. Silence in between means the two
+    events belong to different syllables, and no VOT is measured across it.
+
+    Returns (seconds, release_region, voicing_start) with times in the
+    frames' clock, or (None, reason, None). Only a positive VOT can be found
+    this way: prevoicing sits inside the voiced region itself and leaves no
+    separate release to anchor on.
+    """
+    i = index - 1
+    if i < 0:
+        return None, "voicing opens the stretch, so no release precedes it", None
+    if regions[i].kind == events.SILENCE:
+        return None, "silence runs straight into the voicing, with no release", None
+    while i > 0 and regions[i - 1].kind not in (events.SILENCE, events.VOICED):
+        i -= 1
+    release = regions[i]
+    return regions[index].start - release.start, release, regions[index].start
+
+
+def vot(regions):
+    """Voice onset time for the first vowel in the stretch. See vot_at.
+
+    Select a stretch starting just before a later stop to measure that one
+    instead, or use the vowels command, which measures every vowel at once.
+    """
+    first = next((i for i, r in enumerate(regions) if r.kind == events.VOICED), None)
+    if first is None:
+        return None, "no voicing was found in this stretch", None
+    return vot_at(regions, first)
+
+
+# --- the vowel table --------------------------------------------------
+
+VOWEL_COLUMNS = [
+    ("vowel", "No."),
+    ("start_s", "Start"),
+    ("end_s", "End"),
+    ("duration_ms", "Dur"),
+    ("vot_ms", "VOT"),
+    ("f0_mean_hz", "F0"),
+    ("f0_min_hz", "F0 min"),
+    ("f0_max_hz", "F0 max"),
+    ("f1_hz", "F1"),
+    ("f2_hz", "F2"),
+    ("f3_hz", "F3"),
+    ("closest_reference_vowel", "Closest reference vowel"),
+]
+
+
+def vowel_rows(frames, regions):
+    """One row per voiced region: the vowels, measured.
+
+    A voiced region is not always a vowel - nasals, laterals and voiced
+    fricatives are voiced too - so every row is a candidate, and the closest
+    reference vowel is a guess, never a measurement.
+    """
+    rows = []
+    for i, r in enumerate(regions):
+        if r.kind != events.VOICED:
+            continue
+        s = r.stats
+        value, release, _ = vot_at(regions, i)
+        row = {
+            "number": len(rows) + 1,
+            "start": frames.absolute(r.start),
+            "end": frames.absolute(r.end),
+            "duration": r.duration,
+            "vot": value,
+            "vot_reason": None if value is not None else release,
+            "release": frames.absolute(release.start) if value is not None else None,
+            "release_kind": release.kind if value is not None else None,
+            "f0": s.get("f0"),
+            "f0_min": s.get("f0_min"),
+            "f0_max": s.get("f0_max"),
+            "f0_slope": s.get("f0_slope"),
+            "f1": s.get("f1"),
+            "f2": s.get("f2"),
+            "f3": s.get("f3"),
+            "f1_spread": s.get("f1_spread"),
+            "f2_spread": s.get("f2_spread"),
+            "intensity": s.get("intensity_mean"),
+            "hnr": s.get("hnr"),
+            "jitter": s.get("jitter"),
+            "nearest": None,
+            "runner_up": None,
+            "ambiguous": False,
+        }
+        if row["f1"] and row["f2"]:
+            name, runner, ratio = _nearest_vowel(row["f1"], row["f2"])
+            row["nearest"] = name
+            row["runner_up"] = runner
+            row["ambiguous"] = ratio > 0.8
+        rows.append(row)
+    return rows
+
+
+def vowel_csv_rows(rows):
+    """The same rows as the CSV's columns, in VOWEL_COLUMNS order."""
+    out = []
+    for r in rows:
+        out.append([
+            r["number"],
+            _num(r["start"], 3),
+            _num(r["end"], 3),
+            _num(r["duration"] * 1000, 1),
+            _num(r["vot"] * 1000 if r["vot"] is not None else None, 1),
+            _num(r["f0"], 1),
+            _num(r["f0_min"], 1),
+            _num(r["f0_max"], 1),
+            _num(r["f1"], 1),
+            _num(r["f2"], 1),
+            _num(r["f3"], 1),
+            r["nearest"] or "",
+        ])
+    return out
+
+
+def _num(v, places):
+    """A number for the CSV, or an empty cell. Never a nan."""
+    if v is None or (isinstance(v, float) and np.isnan(v)):
+        return ""
+    return f"{v:.{places}f}"
+
+
+def _table(headings, rows, align):
+    """Space-aligned columns. No drawn characters: a screen reader reads them."""
+    cells = [[str(c) for c in row] for row in rows]
+    widths = [
+        max([len(h)] + [len(row[i]) for row in cells])
+        for i, h in enumerate(headings)
+    ]
+
+    def line(values):
+        out = []
+        for value, width, how in zip(values, widths, align):
+            out.append(value.ljust(width) if how == "l" else value.rjust(width))
+        return "  " + "  ".join(out).rstrip()
+
+    return [line(headings), line(["-" * w for w in widths])] + [
+        line(row) for row in cells
+    ]
+
+
+def vowel_report(frames, regions, sound_name, start, end):
+    """The vowel table as report lines, plus the columns and rows for the CSV."""
+    rows = vowel_rows(frames, regions)
+    csv_rows = vowel_csv_rows(rows)
+    lines = [
+        "VOWEL TABLE",
+        "",
+        f"Sound: {sound_name}.",
+        f"Stretch described: {fmt.secs(start)} to {fmt.secs(end)}, "
+        f"lasting {fmt.duration(end - start)}.",
+        f"Vowels found: {len(rows)}.",
+        "",
+        "One row per voiced region. Times are in seconds, durations and voice "
+        "onset times in milliseconds, frequencies in hertz. An empty cell is a "
+        "measurement that could not be made.",
+        "",
+    ]
+
+    display = [
+        [
+            str(r["number"]),
+            f"{r['start']:.3f}",
+            f"{r['end']:.3f}",
+            f"{r['duration'] * 1000:.0f}",
+            "" if r["vot"] is None else f"{r['vot'] * 1000:.0f}",
+            _cell(r["f0"]),
+            _cell(r["f0_min"]),
+            _cell(r["f0_max"]),
+            _cell(r["f1"]),
+            _cell(r["f2"]),
+            _cell(r["f3"]),
+            r["nearest"] or "",
+        ]
+        for r in rows
+    ]
+    lines += _table([h for _, h in VOWEL_COLUMNS], display, "rrrrrrrrrrrl")
+
+    lines += [
+        "",
+        "MEASURED and LIKELY are mixed in that table, so read the last column "
+        "with care: every number in it is measured, but the closest reference "
+        "vowel is the tool's guess. Voiced regions include nasals, laterals "
+        "and voiced fricatives, so a row is a vowel candidate, not a vowel.",
+        "",
+        "Voice onset time is measured from the noise immediately before the "
+        f"vowel, so a figure over {fmt.ms(VOT_IMPLAUSIBLE)} is marked below and "
+        "usually means that noise was not a stop release. Prevoicing does not "
+        "show: only a positive voice onset time can be found this way.",
+        "",
+        "VOWEL BY VOWEL",
+        "",
+    ]
+    for r in rows:
+        lines += _vowel_block(r)
+        lines.append("")
+    return lines, [name for name, _ in VOWEL_COLUMNS], csv_rows
+
+
+def _cell(v):
+    return "" if v is None else f"{v:.0f}"
+
+
+def _vowel_block(r):
+    """One vowel, a fact per line, measurement kept apart from guesswork."""
+    lines = [
+        "MEASURED",
+        f"Vowel {r['number']}: {fmt.secs(r['start'])} to {fmt.secs(r['end'])}, "
+        f"lasting {fmt.duration(r['duration'])}.",
+    ]
+    if r["vot"] is None:
+        lines.append(f"  Voice onset time: not measurable, {r['vot_reason']}.")
+    else:
+        lines.append(
+            f"  Voice onset time: {fmt.ms(r['vot'])}, from the release at "
+            f"{fmt.secs(r['release'])}, labelled {events.PLAIN[r['release_kind']]}."
+        )
+        if r["vot"] > VOT_IMPLAUSIBLE:
+            lines.append(
+                f"  Treat that with suspicion: {fmt.ms(VOT_IMPLAUSIBLE)} is already "
+                "long for an aspirated stop, so the noise before this vowel is "
+                "more likely a fricative or another word than a release. Select "
+                "a shorter stretch around the stop you mean."
+            )
+    if r["f0"]:
+        lines.append(
+            f"  Pitch: mean {r['f0']:.0f} hertz, from {r['f0_min']:.0f} to "
+            f"{r['f0_max']:.0f} hertz."
+        )
+        if r["f0_slope"]:
+            lines.append(f"  Pitch slope: {r['f0_slope']:+.0f} hertz per second.")
+    else:
+        lines.append("  Pitch: not measurable in this region.")
+    lines.append(
+        f"  Formants: F1 {fmt.hz_plain(r['f1'])}, F2 {fmt.hz_plain(r['f2'])}, "
+        f"F3 {fmt.hz_plain(r['f3'])}."
+    )
+    if r["f1_spread"] is not None and r["f2_spread"] is not None:
+        lines.append(
+            f"  Formants vary across the region by {r['f1_spread']:.0f} hertz in "
+            f"F1 and {r['f2_spread']:.0f} hertz in F2."
+        )
+    if r["intensity"]:
+        lines.append(f"  Mean level: {fmt.db(r['intensity'])}.")
+    if r["jitter"] is not None:
+        lines.append(f"  Jitter: {fmt.pct(r['jitter'])}.")
+
+    if r["nearest"]:
+        guess = Guess(f"this is {r['nearest']}")
+        guess.runner_up = r["runner_up"]
+        guess.note(
+            f"F1 {r['f1']:.0f} and F2 {r['f2']:.0f} hertz are nearest the "
+            "reference values for it, which are adult male averages."
+        )
+        if r["ambiguous"]:
+            guess.downgrade(
+                MODERATE,
+                "The next vowel along is almost equally close, so the identity "
+                "is genuinely ambiguous here.",
+            )
+        if r["f2_spread"] and r["f2"] and r["f2_spread"] / r["f2"] > 0.15:
+            guess.downgrade(
+                MODERATE,
+                f"F2 moves by {r['f2_spread']:.0f} hertz across the region, so "
+                "this may be a diphthong or a formant transition.",
+            )
+        lines.append("LIKELY (the tool's guess, not a measurement)")
+        lines += guess.lines()
+    return lines
+
+
+def vowel_summary(rows):
+    """The two or three sentences the shell speaks."""
+    if not rows:
+        return ["No voiced region was found, so there are no vowels to measure."]
+    out = [
+        f"Measured {len(rows)} vowel{'s' if len(rows) != 1 else ''}, "
+        f"{fmt.join(fmt.duration(r['duration']) for r in rows)} long."
+    ]
+    with_vot = [r for r in rows if r["vot"] is not None]
+    if with_vot:
+        out.append(
+            "Voice onset time: "
+            + fmt.join(
+                f"{fmt.ms(r['vot'])} for vowel {r['number']}"
+                + (", which is too long to trust" if r["vot"] > VOT_IMPLAUSIBLE else "")
+                for r in with_vot
+            )
+            + "."
+        )
+    named = [r for r in rows if r["nearest"]]
+    if named:
+        out.append(
+            "Closest reference vowels: "
+            + fmt.join(f"vowel {r['number']}, {r['nearest']}" for r in named)
+            + "."
+        )
+    return out
+
+
 # --- assembled reports ------------------------------------------------
+
+
+def stats_list(frames, regions, start, end):
+    """The measurements as a plain list, one per line, nothing interpreted."""
+    snd = frames.sound
+    values = frames.window_samples()
+    peak = float(np.max(np.abs(values))) if values.size else 0.0
+    lines = [
+        "MEASUREMENTS",
+        f"  Duration: {fmt.duration(end - start)}.",
+    ]
+
+    value, release, onset_at = vot(regions)
+    if value is None:
+        lines.append(f"  Voice onset time: not measurable, {release}.")
+    else:
+        lines.append(
+            f"  Voice onset time: {fmt.ms(value)}, from the release at "
+            f"{fmt.secs(frames.absolute(release.start))}, labelled "
+            f"{events.PLAIN[release.kind]}, to voicing at "
+            f"{fmt.secs(frames.absolute(onset_at))}, to the nearest "
+            f"{analysis.TIME_STEP * 1000:.0f} milliseconds."
+        )
+
+    lines += [
+        f"  Sampling frequency: {snd.sampling_frequency:.0f} hertz.",
+        f"  Channels: {snd.n_channels}.",
+        f"  Peak amplitude: {fmt.amp(peak)}.",
+    ]
+
+    kinds = {}
+    for r in regions:
+        kinds[r.kind] = kinds.get(r.kind, 0) + 1
+    parts = [f"{n} {events.SHORT[k]}" for k, n in kinds.items()]
+    lines.append(f"  Regions: {len(regions)}, {fmt.join(parts)}.")
+    voiced_time = sum(r.duration for r in regions if r.kind == events.VOICED)
+    lines.append(
+        f"  Voiced: {fmt.duration(voiced_time)}, "
+        f"{fmt.pct(voiced_time / max(end - start, 1e-9))} of the stretch."
+    )
+
+    f0 = frames.f0[~np.isnan(frames.f0)]
+    if f0.size:
+        slope = np.polyfit(np.arange(f0.size), f0, 1)[0] * f0.size
+        lines += [
+            f"  Pitch measurable in: {fmt.pct(f0.size / max(len(frames.f0), 1))} "
+            "of frames.",
+            f"  Pitch median: {np.median(f0):.0f} hertz.",
+            f"  Pitch mean: {f0.mean():.0f} hertz.",
+            f"  Pitch range: {f0.min():.0f} to {f0.max():.0f} hertz.",
+            f"  Pitch net change: {slope:+.0f} hertz.",
+        ]
+    else:
+        lines.append("  Pitch: not measurable anywhere in this stretch.")
+    hnr = frames.hnr[~np.isnan(frames.hnr)]
+    if hnr.size:
+        lines.append(f"  Harmonics-to-noise ratio, mean: {hnr.mean():.1f} decibels.")
+
+    intensity = frames.intensity[~np.isnan(frames.intensity)]
+    if intensity.size:
+        lines += [
+            f"  Level mean: {intensity.mean():.0f} decibels.",
+            f"  Level range: {intensity.min():.0f} to {intensity.max():.0f} decibels.",
+            f"  Loudness peaks: {_count_peaks(frames.intensity)}, counting rises "
+            f"and falls of at least {PEAK_PROMINENCE:.0f} decibels.",
+        ]
+
+    voiced = [r for r in regions if r.kind == events.VOICED]
+    if voiced:
+        longest = max(voiced, key=lambda r: r.duration)
+        st = longest.stats
+        lines += [
+            f"  Longest voiced region: {fmt.secs(frames.absolute(longest.start))} "
+            f"to {fmt.secs(frames.absolute(longest.end))}, "
+            f"{fmt.duration(longest.duration)}.",
+            f"  Its formants: F1 {fmt.hz_plain(st.get('f1'))}, F2 "
+            f"{fmt.hz_plain(st.get('f2'))}, F3 {fmt.hz_plain(st.get('f3'))}.",
+        ]
+        if st.get("jitter") is not None:
+            lines.append(f"  Its jitter: {fmt.pct(st['jitter'])}.")
+    return lines
 
 
 def full_report(frames, regions, sound_name, start, end):
     lines = ["ACOUSTIC DESCRIPTION", ""]
+    lines += stats_list(frames, regions, start, end)
+    lines += ["", "DESCRIPTION", ""]
     lines += overview(frames, sound_name, start, end)
     lines += ["", f"The tool found {len(regions)} regions.", ""]
     for i, region in enumerate(regions, 1):
@@ -592,6 +990,9 @@ def summary(frames, regions, start, end):
                 else f"and the contour looks {shape}."
             )
         )
+    value, _, _ = vot(regions)
+    if value is not None:
+        out.append(f"Voice onset time {fmt.ms(value)}.")
     longest = max(regions, key=lambda r: r.duration) if regions else None
     if longest is not None and longest.kind == events.VOICED:
         s = longest.stats

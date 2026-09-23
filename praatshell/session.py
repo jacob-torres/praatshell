@@ -146,6 +146,27 @@ class Session:
     def set_segments(self, segments, name=None):
         self.segments[name or self.current] = segments
 
+    # --- what-if ------------------------------------------------------
+
+    def snapshot(self):
+        """Everything needed to put the session back as it is now.
+
+        Edits build new Sound objects rather than changing old ones in place,
+        so holding on to the old references is enough.
+        """
+        return (
+            dict(self.sounds),
+            {k: [copy.copy(s) for s in v] for k, v in self.segments.items()},
+            self.current,
+            self.sel,
+            self.clipboard,
+            list(self._undo),
+        )
+
+    def restore(self, state):
+        (self.sounds, self.segments, self.current, self.sel,
+         self.clipboard, self._undo) = state
+
     # --- undo ---------------------------------------------------------
 
     def push_undo(self, name=None):

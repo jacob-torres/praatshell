@@ -21,7 +21,12 @@ WHAT YOU NEED
 
 Python, and two Python packages. Install them once:
 
-    pip install --user praat-parselmouth numpy
+    pip install praat-parselmouth numpy
+
+The package is called praat-parselmouth on PyPI even though you import it as
+parselmouth. Do not "pip install parselmouth": that is an unrelated, broken
+Google Ads package. Avoid --user on Windows: some Python installs do not put
+the user site directory on the import path, so the install silently vanishes.
 
 parselmouth contains Praat's own analysis code, so the numbers match what Praat
 itself produces. The separate Praat program is not required for analysis, but if
@@ -55,6 +60,7 @@ A FIRST SESSION
     load Sept16-1.Collection
     list
     describe
+    vowels
     events
     autoseg
     seg list
@@ -67,7 +73,73 @@ inside it is loaded under its own name.
 
 describe writes a full report and speaks a short summary. events gives just the
 timeline. autoseg turns that timeline into numbered segments you can select,
-play, measure and edit.
+play, measure and edit. autoseg followed by a number cuts the selection into
+equal segments of that many milliseconds instead:
+
+    autoseg 50
+    autoseg 50ms
+    select seg 4
+
+A bare number is milliseconds; 50ms or 0.05s also work. The last segment keeps
+whatever is left over, so no sound goes unlabelled.
+
+describe can also take a selection or an edit as its argument:
+
+    describe select 0 0.35
+    describe select seg 3
+    describe reverse
+    describe flatten 120
+
+The command after describe runs first and its result is described. Then the
+sound and the selection are put back as they were, nothing is played, and
+nothing is added to the undo history, so this is a way to hear what a stretch
+holds, or what an edit would do, without committing to it. A previewed edit's
+report is named after the edit, such as spkr1-pot__0-1204ms_reverse.txt, so
+it never overwrites the report for the real sound.
+
+
+EVERY VOWEL AT ONCE
+
+vowels measures every vowel in the selection and writes them as a table:
+
+    vowels
+    vowels select seg 3
+    vowels flatten 150
+
+One row per voiced region, with the vowel's duration, its voice onset time,
+its pitch (mean, lowest and highest), and F1, F2 and F3. It goes to
+NAME__START-ENDms_vowels.txt as an aligned table followed by a fact-per-line
+block for each vowel, and to csv/NAME__START-ENDms_vowels.csv for R or a
+spreadsheet. It takes the same arguments as describe, listed above.
+
+A row is a vowel candidate, not a vowel: nasals, laterals and voiced
+fricatives are voiced too, so check the rows against what you know was said.
+The closest reference vowel in the last column is a guess, and the block for
+that vowel gives its confidence and the runner-up.
+
+
+WHAT A DESCRIBE REPORT HOLDS
+
+The report opens with MEASUREMENTS: a plain list, one number per line, that
+you can quote directly. Duration, voice onset time, sampling frequency, peak
+amplitude, the region count, how much of the stretch is voiced, pitch median,
+mean, range and net change, harmonics-to-noise ratio, level mean and range,
+loudness peaks, and the formants of the longest voiced region. The prose
+DESCRIPTION follows it: the overview, every region in turn, and the contours.
+
+Voice onset time is measured from the release to the voicing that follows it.
+The release is the run of non-silent, non-voiced regions immediately before
+the vowel: the burst, plus any aspiration after it. A burst that runs into
+aspiration is often labelled aperiodic rather than burst, so position, not
+label, is what identifies it. Silence in between means the two belong to
+different syllables and no VOT is measured across it. It is quoted to the
+nearest analysis frame, 10 milliseconds, and only a positive VOT can be found
+this way: prevoicing does not show.
+
+describe reports the VOT of the first vowel in the stretch. vowels reports it
+for every vowel. A figure over 120 milliseconds is flagged in the report,
+because it usually means the noise before that vowel was not a stop release.
+To pin down one stop, select a stretch that starts just before its release.
 
 
 MEASUREMENT VERSUS GUESSWORK

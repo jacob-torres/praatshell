@@ -30,6 +30,8 @@ HELP = [
     ("stop", "Stop playing."),
     ("", ""),
     ("describe", "Full description of the selection: regions, pitch, formants, shape."),
+    ("describe COMMAND", "Describe what a select or an edit would give, without keeping it."),
+    ("vowels [COMMAND]", "Table every vowel: duration, voice onset time, pitch, formants."),
     ("events", "Just the timeline of regions."),
     ("wave", "The waveform's physical shape: amplitude, periodicity, envelope."),
     ("pitch", "Fundamental frequency over the selection."),
@@ -40,6 +42,7 @@ HELP = [
     ("compare A B", "Compare two segments, or two loaded sounds."),
     ("", ""),
     ("autoseg", "Propose segment boundaries from the region timeline."),
+    ("autoseg MILLISECONDS", "Cut the selection into equal segments of that length."),
     ("seg list", "Say the segments and their times."),
     ("seg add TIME LABEL", "Add a boundary at a time and name what follows."),
     ("seg del LABEL", "Remove a segment."),
@@ -195,7 +198,7 @@ class Shell(cmd.Cmd):
         except Exception as exc:
             self.say(f"Could not play that: {exc}")
 
-    def write_report(self, lines, suffix="", layers=None, frames=None):
+    def write_report(self, lines, suffix="", layers=None, frames=None, table=None):
         name = self.session.current
         start, end = self.session.selection()
         paths = report.write(
@@ -208,6 +211,7 @@ class Shell(cmd.Cmd):
             frames=frames,
             suffix=suffix,
             layers=layers,
+            table=table,
         )
         rel = [os.path.relpath(p, self.root) for p in paths]
         self.say(f"Written: {fmt.join(rel)}.")
@@ -341,16 +345,79 @@ class Shell(cmd.Cmd):
 
     # --- description --------------------------------------------------
 
+    def _preview(self, arg, action, verb):
+        """Run action on what the sound is now, or on what a command would give.
+
+        The command after describe or vowels runs first, then the session is
+        put back exactly as it was, so a stretch or an edit can be measured
+        without committing to it.
+        """
+        if not arg.strip():
+            action("")
+            return
+        name, rest, _ = self.parseline(arg.strip())
+        if name not in AUTOPLAY:
+            raise SessionError(
+                f"{verb} can be followed by a selection or an edit: "
+                f"{fmt.join(sorted(AUTOPLAY))}."
+            )
+        before = self.session.snapshot()
+        self.invalidate()
+        try:
+            getattr(self, "do_" + name)(rest)
+            # A selection is already in the report's filename. An edit is not,
+            # so name the report after it: pat__0-1204ms_flatten-120.txt.
+            action("" if name == "select" else "-".join(arg.split()))
+        finally:
+            self.session.restore(before)
+            self.invalidate()
+        if name != "select":
+            self.say(f"That was a preview. {self.session.current} is unchanged.")
+
     def do_describe(self, arg):
-        """describe. Full description of the selection."""
+        """describe, or describe COMMAND. Full description of the selection.
+
+        With a command after it, such as describe select 0 0.35 or describe
+        reverse, that command runs first and its result is described. The
+        sound and the selection are then put back as they were, so this is a
+        way to look at a stretch or an edit without committing to it.
+        """
+        self._preview(arg, self._describe, "describe")
+        self.write_whole_summary()
+
+    def do_vowels(self, arg):
+        """vowels, or vowels COMMAND. Table every vowel in the selection.
+
+        Duration, voice onset time, pitch and formants, one row per vowel, as
+        a table in the .txt and as a .csv beside it. It takes the same
+        arguments as describe: vowels select seg 3, or vowels flatten 120.
+        """
+        self._preview(arg, self._vowels, "vowels")
+
+    def _vowels(self, suffix=""):
+        frames, regions = self.analysed()
+        start, end = self.session.selection()
+        rows = describe.vowel_rows(frames, regions)
+        self.say(*describe.vowel_summary(rows))
+        if not rows:
+            return
+        lines, columns, csv_rows = describe.vowel_report(
+            frames, regions, self.session.current, start, end
+        )
+        self.write_report(
+            lines,
+            suffix=f"vowels_{suffix}" if suffix else "vowels",
+            table=(columns, csv_rows),
+        )
+
+    def _describe(self, suffix=""):
         frames, regions = self.analysed()
         start, end = self.session.selection()
         lines = describe.full_report(
             frames, regions, self.session.current, start, end
         )
         self.say(*describe.summary(frames, regions, start, end))
-        self.write_report(lines, frames=frames)
-        self.write_whole_summary()
+        self.write_report(lines, frames=frames, suffix=suffix)
 
     def write_whole_summary(self):
         """Refresh the whole-sound summary, which indexes the timed reports."""
@@ -652,7 +719,30 @@ class Shell(cmd.Cmd):
     # --- segments -----------------------------------------------------
 
     def do_autoseg(self, arg):
-        """autoseg. Propose segment boundaries from the region timeline."""
+        """autoseg, or autoseg MILLISECONDS.
+
+        Alone, it proposes boundaries from the region timeline. With a number,
+        it cuts the selection into equal segments of that many milliseconds.
+        """
+        if arg.strip():
+            text = arg.strip()
+            # A bare number is milliseconds; a unit, as in 50ms or 0.05s, wins.
+            length = fmt.parse_time(text) if text[-1].isalpha() else float(text) / 1000
+            start, end = self.session.selection()
+            segs = segments.fixed_length(start, end, length)
+            self.session.set_segments(segs)
+            last = segs[-1].duration
+            tail = (
+                f" The last one is {fmt.duration(last)}."
+                if abs(last - length) > 1e-6
+                else ""
+            )
+            self.say(
+                f"Cut {fmt.duration(end - start)} into {len(segs)} segments of "
+                f"{fmt.duration(length)}, numbered 1 to {len(segs)}.{tail}",
+                "Type seg list to hear them, or select seg 1 to work on the first.",
+            )
+            return
         frames, regions = self.analysed()
         segs = segments.from_regions(regions)
         for seg, region in zip(segs, regions):
