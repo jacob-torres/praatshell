@@ -112,6 +112,16 @@ NAME__START-ENDms_vowels.txt as an aligned table followed by a fact-per-line
 block for each vowel, and to csv/NAME__START-ENDms_vowels.csv for R or a
 spreadsheet. It takes the same arguments as describe, listed above.
 
+The table gives two durations. Dur runs from the onset of voicing to the
+offset of the formants, which is the vowel. Voiced is the part of that the
+pitch tracker found a pitch in. They differ when a vowel devoices at its end
+into a voiceless consonant, as the vowel in pat does before its final t: the
+pitch disappears while F1 and F2 carry on unchanged and the sound is still
+loud. Voicing alone would cut such a vowel short by 50 milliseconds or more,
+so the tail is followed for as long as the formants hold their place and the
+level stays up. Quote Dur as the vowel's duration; Voiced is there so you can
+see how much of it was modal.
+
 A row is a vowel candidate, not a vowel: nasals, laterals and voiced
 fricatives are voiced too, so check the rows against what you know was said.
 The closest reference vowel in the last column is a guess, and the block for
@@ -132,9 +142,17 @@ The release is the run of non-silent, non-voiced regions immediately before
 the vowel: the burst, plus any aspiration after it. A burst that runs into
 aspiration is often labelled aperiodic rather than burst, so position, not
 label, is what identifies it. Silence in between means the two belong to
-different syllables and no VOT is measured across it. It is quoted to the
-nearest analysis frame, 10 milliseconds, and only a positive VOT can be found
-this way: prevoicing does not show.
+different syllables and no VOT is measured across it. Only a positive VOT can
+be found this way: prevoicing does not show.
+
+Where that run starts is then settled on the waveform rather than on the
+region boundary. Regions are drawn from Praat's intensity contour, whose
+window is 43 milliseconds wide at a 75 hertz pitch floor, so a boundary can
+sit up to 21 milliseconds before the event it marks. A release is a step
+change in the samples themselves, so the samples place it far more precisely:
+in pat the contour put the release at 0.676 seconds, while the waveform jumps
+thirty-fold at 0.690. Voicing onset stays on the frame grid, so a VOT is only
+as fine as the 10 millisecond frame spacing at that end.
 
 describe reports the VOT of the first vowel in the stretch. vowels reports it
 for every vowel. A figure over 120 milliseconds is flagged in the report,

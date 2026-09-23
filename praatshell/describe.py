@@ -36,6 +36,9 @@ PEAK_PROMINENCE = 10.0  # decibels a loudness peak must stand out by to be count
 # English aspirated stops rarely pass 120 ms, so a longer gap between a noise
 # and the voicing after it is probably not a release and its vowel at all.
 VOT_IMPLAUSIBLE = 0.120
+# A vowel before a voiceless stop devoices at its end while its formants hold.
+# Its tail ends where the level finally falls this far below the vowel's own.
+VOWEL_TAIL_DROP = 15.0
 TOO_SHORT = "measurable over too few frames to characterise"
 
 
@@ -390,7 +393,29 @@ def _nearest_vowel(f1, f2):
 # --- voice onset time -------------------------------------------------
 
 
-def vot_at(regions, index):
+class VOT:
+    """A voice onset time, or the reason there is not one.
+
+    Falsy when nothing could be measured, so `if not v: say(v.reason)`.
+    Times are in the frames' clock.
+    """
+
+    def __init__(self, seconds=None, release=None, anchor=None, onset=None, reason=None):
+        self.seconds = seconds
+        self.release = release  # the region the release run starts in
+        self.anchor = anchor  # where the release actually is, in that region
+        self.onset = onset  # where voicing starts
+        self.reason = reason
+
+    def __bool__(self):
+        return self.seconds is not None
+
+    @property
+    def implausible(self):
+        return bool(self) and self.seconds > VOT_IMPLAUSIBLE
+
+
+def vot_at(frames, regions, index):
     """Voice onset time for the voiced region at index.
 
     The release is the run of non-silent, non-voiced regions immediately
@@ -400,23 +425,28 @@ def vot_at(regions, index):
     what identifies it - its position is. Silence in between means the two
     events belong to different syllables, and no VOT is measured across it.
 
-    Returns (seconds, release_region, voicing_start) with times in the
-    frames' clock, or (None, reason, None). Only a positive VOT can be found
-    this way: prevoicing sits inside the voiced region itself and leaves no
-    separate release to anchor on.
+    The run's own start is only as precise as the intensity contour that drew
+    it, so the release transient is looked for in the waveform and used
+    instead when there is one. Only a positive VOT can be found this way:
+    prevoicing sits inside the voiced region itself and leaves no separate
+    release to anchor on.
     """
     i = index - 1
     if i < 0:
-        return None, "voicing opens the stretch, so no release precedes it", None
+        return VOT(reason="voicing opens the stretch, so no release precedes it")
     if regions[i].kind == events.SILENCE:
-        return None, "silence runs straight into the voicing, with no release", None
+        return VOT(reason="silence runs straight into the voicing, with no release")
     while i > 0 and regions[i - 1].kind not in (events.SILENCE, events.VOICED):
         i -= 1
     release = regions[i]
-    return regions[index].start - release.start, release, regions[index].start
+    onset = regions[index].start
+    anchor = events.find_burst(frames.sound, release.start, onset)
+    if anchor is None or not release.start <= anchor < onset:
+        anchor = release.start
+    return VOT(onset - anchor, release, anchor, onset)
 
 
-def vot(regions):
+def vot(frames, regions):
     """Voice onset time for the first vowel in the stretch. See vot_at.
 
     Select a stretch starting just before a later stop to measure that one
@@ -424,8 +454,54 @@ def vot(regions):
     """
     first = next((i for i, r in enumerate(regions) if r.kind == events.VOICED), None)
     if first is None:
-        return None, "no voicing was found in this stretch", None
-    return vot_at(regions, first)
+        return VOT(reason="no voicing was found in this stretch")
+    return vot_at(frames, regions, first)
+
+
+def vowel_end(frames, regions, index):
+    """Where the vowel at index really ends, past the frames that lost voicing.
+
+    A vowel before a voiceless stop devoices at its end: the pitch tracker
+    gives up while F1 and F2 carry on unchanged and the sound is still loud.
+    Voicing alone therefore cuts a vowel short, so the tail is followed for as
+    long as the formants hold their place and the level stays up. The start is
+    left alone: voicing onset is where the vowel begins by definition, and it
+    is the same instant that ends the voice onset time.
+    """
+    region = regions[index]
+    a = frames.at(region.start)
+    b = max(a, frames.at(max(region.start, region.end - 1e-6)))
+    core = slice(a, b + 1)
+    db = frames.intensity[core]
+    db = db[~np.isnan(db)]
+    f1 = frames.formants[core, 0]
+    f2 = frames.formants[core, 1]
+    f1, f2 = f1[~np.isnan(f1)], f2[~np.isnan(f2)]
+    if not db.size or not f1.size or not f2.size:
+        return region.end
+    f1_mean, f2_mean = float(f1.mean()), float(f2.mean())
+    floor = db.mean() - VOWEL_TAIL_DROP
+    limit = next(
+        (r.start for r in regions[index + 1 :] if r.kind == events.VOICED),
+        frames.window[1],
+    )
+
+    i = b + 1
+    while i < len(frames.times) and frames.times[i] < limit:
+        level = frames.intensity[i]
+        if np.isnan(level) or level < floor:
+            break
+        one, two = frames.formants[i, 0], frames.formants[i, 1]
+        if np.isnan(one) or np.isnan(two):
+            break
+        if abs(two - f2_mean) > max(150.0, 0.15 * f2_mean):
+            break
+        if abs(one - f1_mean) > max(150.0, 0.20 * f1_mean):
+            break
+        i += 1
+    if i == b + 1:
+        return region.end
+    return float(min(frames.times[i] if i < len(frames.times) else limit, limit))
 
 
 # --- the vowel table --------------------------------------------------
@@ -435,6 +511,7 @@ VOWEL_COLUMNS = [
     ("start_s", "Start"),
     ("end_s", "End"),
     ("duration_ms", "Dur"),
+    ("voiced_ms", "Voiced"),
     ("vot_ms", "VOT"),
     ("f0_mean_hz", "F0"),
     ("f0_min_hz", "F0 min"),
@@ -458,16 +535,20 @@ def vowel_rows(frames, regions):
         if r.kind != events.VOICED:
             continue
         s = r.stats
-        value, release, _ = vot_at(regions, i)
+        v = vot_at(frames, regions, i)
+        end = vowel_end(frames, regions, i)
         row = {
             "number": len(rows) + 1,
             "start": frames.absolute(r.start),
-            "end": frames.absolute(r.end),
-            "duration": r.duration,
-            "vot": value,
-            "vot_reason": None if value is not None else release,
-            "release": frames.absolute(release.start) if value is not None else None,
-            "release_kind": release.kind if value is not None else None,
+            "end": frames.absolute(end),
+            "duration": end - r.start,
+            "voiced_end": frames.absolute(r.end),
+            "voiced_duration": r.duration,
+            "tail": end - r.end,
+            "vot": v.seconds,
+            "vot_reason": v.reason,
+            "release": frames.absolute(v.anchor) if v else None,
+            "release_kind": v.release.kind if v else None,
             "f0": s.get("f0"),
             "f0_min": s.get("f0_min"),
             "f0_max": s.get("f0_max"),
@@ -502,6 +583,7 @@ def vowel_csv_rows(rows):
             _num(r["start"], 3),
             _num(r["end"], 3),
             _num(r["duration"] * 1000, 1),
+            _num(r["voiced_duration"] * 1000, 1),
             _num(r["vot"] * 1000 if r["vot"] is not None else None, 1),
             _num(r["f0"], 1),
             _num(r["f0_min"], 1),
@@ -556,6 +638,11 @@ def vowel_report(frames, regions, sound_name, start, end):
         "onset times in milliseconds, frequencies in hertz. An empty cell is a "
         "measurement that could not be made.",
         "",
+        "Dur runs from the onset of voicing to the offset of the formants. "
+        "Voiced is the part of that the pitch tracker found a pitch in. The "
+        "two differ when a vowel devoices into a voiceless consonant after it, "
+        "which is ordinary in English and not a fault in the recording.",
+        "",
     ]
 
     display = [
@@ -564,6 +651,7 @@ def vowel_report(frames, regions, sound_name, start, end):
             f"{r['start']:.3f}",
             f"{r['end']:.3f}",
             f"{r['duration'] * 1000:.0f}",
+            f"{r['voiced_duration'] * 1000:.0f}",
             "" if r["vot"] is None else f"{r['vot'] * 1000:.0f}",
             _cell(r["f0"]),
             _cell(r["f0_min"]),
@@ -575,7 +663,7 @@ def vowel_report(frames, regions, sound_name, start, end):
         ]
         for r in rows
     ]
-    lines += _table([h for _, h in VOWEL_COLUMNS], display, "rrrrrrrrrrrl")
+    lines += _table([h for _, h in VOWEL_COLUMNS], display, "rrrrrrrrrrrrl")
 
     lines += [
         "",
@@ -609,6 +697,14 @@ def _vowel_block(r):
         f"Vowel {r['number']}: {fmt.secs(r['start'])} to {fmt.secs(r['end'])}, "
         f"lasting {fmt.duration(r['duration'])}.",
     ]
+    if r["tail"] > 1e-6:
+        lines.append(
+            f"  Voicing stops at {fmt.secs(r['voiced_end'])}, "
+            f"{fmt.duration(r['tail'])} before the end: the vowel devoices into "
+            f"the consonant after it while F1 and F2 hold their place. Voiced "
+            f"for {fmt.duration(r['voiced_duration'])} of its "
+            f"{fmt.duration(r['duration'])}."
+        )
     if r["vot"] is None:
         lines.append(f"  Voice onset time: not measurable, {r['vot_reason']}.")
     else:
@@ -712,16 +808,15 @@ def stats_list(frames, regions, start, end):
         f"  Duration: {fmt.duration(end - start)}.",
     ]
 
-    value, release, onset_at = vot(regions)
-    if value is None:
-        lines.append(f"  Voice onset time: not measurable, {release}.")
+    v = vot(frames, regions)
+    if not v:
+        lines.append(f"  Voice onset time: not measurable, {v.reason}.")
     else:
         lines.append(
-            f"  Voice onset time: {fmt.ms(value)}, from the release at "
-            f"{fmt.secs(frames.absolute(release.start))}, labelled "
-            f"{events.PLAIN[release.kind]}, to voicing at "
-            f"{fmt.secs(frames.absolute(onset_at))}, to the nearest "
-            f"{analysis.TIME_STEP * 1000:.0f} milliseconds."
+            f"  Voice onset time: {fmt.ms(v.seconds)}, from the release at "
+            f"{fmt.secs(frames.absolute(v.anchor))}, labelled "
+            f"{events.PLAIN[v.release.kind]}, to voicing at "
+            f"{fmt.secs(frames.absolute(v.onset))}."
         )
 
     lines += [
@@ -990,9 +1085,13 @@ def summary(frames, regions, start, end):
                 else f"and the contour looks {shape}."
             )
         )
-    value, _, _ = vot(regions)
-    if value is not None:
-        out.append(f"Voice onset time {fmt.ms(value)}.")
+    v = vot(frames, regions)
+    if v:
+        out.append(
+            f"Voice onset time {fmt.ms(v.seconds)}"
+            + (", which is too long to trust" if v.implausible else "")
+            + "."
+        )
     longest = max(regions, key=lambda r: r.duration) if regions else None
     if longest is not None and longest.kind == events.VOICED:
         s = longest.stats

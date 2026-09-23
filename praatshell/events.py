@@ -17,6 +17,8 @@ FRICATION_ZCR = 3000.0  # zero crossings per second suggesting noise
 BURST_RISE = 15.0  # decibel jump marking a release burst
 BURST_MAX = 0.030  # a burst longer than 30 ms is something else
 MIN_REGION = 0.030  # regions shorter than this merge into their neighbours
+BURST_WINDOW = 0.002  # the waveform window used to place a release transient
+BURST_JUMP = 5.0  # a transient must stand this many times above the closure
 SMOOTH = 2  # frames either side used to vote down one-frame flickers
 
 SILENCE = "silence"
@@ -180,6 +182,43 @@ def _mark_bursts(regions, frames):
         before = before[~np.isnan(before)]
         if window.size and before.size and window.max() - before.min() >= BURST_RISE:
             r.kind = BURST
+
+
+def find_burst(sound, start, end):
+    """The release transient between start and end, or None if there is none.
+
+    Region boundaries come from Praat's intensity contour, whose window is
+    tens of milliseconds wide, so a boundary can sit up to half a window
+    before the event it marks - at a 75 hertz pitch floor, up to 21 ms early.
+    A release is a step change in the waveform itself, so the samples place it
+    far more precisely than the contour can. Returns None when nothing stands
+    out above the quiet part, which is the honest answer for a stretch of
+    frication with no burst in it.
+    """
+    sr = sound.sampling_frequency
+    values = sound.values[0] if sound.values.ndim > 1 else sound.values
+    i0 = max(0, int(start * sr))
+    i1 = min(len(values), int(end * sr))
+    step = max(1, int(BURST_WINDOW * sr))
+    levels = [
+        (i, float(np.max(np.abs(values[i : i + step]))))
+        for i in range(i0, i1 - step + 1, step)
+    ]
+    if len(levels) < 3:
+        return None
+    amps = sorted(level for _, level in levels)
+    floor = float(np.median(amps[:3]))  # the quietest part: the closure
+    peak = amps[-1]
+    if floor <= 0 or peak < floor * BURST_JUMP:
+        return None
+    threshold = floor + 0.10 * (peak - floor)
+    for n, (i, level) in enumerate(levels):
+        if level >= threshold:
+            # The rise begins in the window before the one that crosses.
+            if n and levels[n - 1][1] > floor * 2:
+                n -= 1
+            return levels[n][0] / sr
+    return None
 
 
 def measure(region, frames):
