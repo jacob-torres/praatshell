@@ -600,15 +600,19 @@ class Shell(cmd.Cmd):
                 f"  F1 {fmt.hz_plain(f1)}, F2 {fmt.hz_plain(f2)}, F3 {fmt.hz_plain(f3)}."
             )
             lines += [head, body]
+            # All three are spoken, whether or not a vowel can be guessed from
+            # them: F3 is a measurement in its own right, not a supporting one.
+            said = (
+                f"Region {i}: F1 {fmt.hz_plain(f1)}, F2 {fmt.hz_plain(f2)}, "
+                f"F3 {fmt.hz_plain(f3)}"
+            )
             if f1 and f2:
                 name, runner, ratio = describe._nearest_vowel(f1, f2)
                 lines.append(
                     f"  Closest reference vowel: {name}. Next closest: {runner}."
                 )
-                spoken.append(
-                    f"Region {i}: F1 {f1:.0f} hertz, F2 {f2:.0f} hertz, closest "
-                    f"to {name}."
-                )
+                said += f", closest to {name}"
+            spoken.append(said + ".")
             if s.get("f2_spread"):
                 lines.append(
                     f"  F2 varies by {s['f2_spread']:.0f} hertz across the region."
