@@ -112,8 +112,10 @@ NAME__START-ENDms_vowels.txt as an aligned table followed by a fact-per-line
 block for each vowel, and to csv/NAME__START-ENDms_vowels.csv for R or a
 spreadsheet. It takes the same arguments as describe, listed above.
 
-Period is one divided by F0, the time a single cycle of the vocal folds takes,
-in milliseconds. It holds the same information as F0; it is there because a
+Period is the time a single cycle of the vocal folds takes, in milliseconds.
+It is one second divided by F0, so to get the frequency back divide 1000 by
+it, not 1: 100 hertz is a period of 10 milliseconds, and 1000 divided by 10 is
+100 again. It holds the same information as F0; it is there because a
 waveform is measured in time rather than in frequency, so it is the number to
 reach for when reading a wave off a spectrogram or an oscillogram.
 
@@ -173,9 +175,11 @@ amplitude, the region count, how much of the stretch is voiced, pitch median,
 mean, period, range and net change, harmonics-to-noise ratio, level mean and
 range, loudness peaks, and the formants of the longest voiced region.
 
-The pitch period is one divided by the fundamental frequency: the time a
-single cycle of the vocal folds takes, quoted to a hundredth of a millisecond
-because at a hundred hertz a period is only about ten milliseconds long. It is
+The pitch period is the time a single cycle of the vocal folds takes, one
+second divided by the fundamental frequency. It is quoted in milliseconds, to
+a hundredth of one, because at a hundred hertz a period is only about ten
+milliseconds long. Mind the units when you check it: the frequency comes back
+as 1000 divided by a period in milliseconds, not 1 divided by it. It is
 given for the median and as a range. The range runs the opposite way round
 from the pitch range, since a shorter period is a higher frequency.
 
@@ -270,8 +274,8 @@ that sound.
 
 The CSV files open in R or a spreadsheet. The pitch CSV has two columns for
 frequency: f0_hz, with octave errors removed, and f0_raw_hz exactly as Praat
-measured it, so nothing is hidden from you. Beside them is period_ms, one
-divided by f0_hz, which is the time a single cycle takes. The pitch command
+measured it, so nothing is hidden from you. Beside them is period_ms, the
+time a single cycle takes, which is 1000 divided by f0_hz. The pitch command
 reports the same thing in its .txt, as a figure for the mean and the range and
 then frame by frame.
 

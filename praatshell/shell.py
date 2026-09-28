@@ -559,9 +559,12 @@ class Shell(cmd.Cmd):
             f"Standard deviation {f0.std():.1f} hertz.",
             f"The contour is {describe._overall_shape(f0)}.",
             "",
-            "The period is one divided by the frequency: the time a single "
-            "cycle takes. A shorter period is a higher frequency, which is why "
-            "the range above runs the opposite way round.",
+            "The period is the time a single cycle takes, in milliseconds. It "
+            "is one second divided by the frequency, so to get the frequency "
+            "back divide 1000 by it, not 1: 100 hertz is a period of 10 "
+            "milliseconds, and 1000 divided by 10 is 100 again. A shorter "
+            "period is a higher frequency, which is why the range above runs "
+            "the opposite way round.",
             "",
             "Frame by frame, time in seconds, then fundamental frequency in "
             "hertz, then period in milliseconds:",

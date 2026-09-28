@@ -652,9 +652,12 @@ def vowel_table(frames, regions, rows=None):
         "two differ when a vowel devoices into a voiceless consonant after it, "
         "which is ordinary in English and not a fault in the recording.",
         "",
-        "Period is one divided by F0: the time a single cycle of the vocal "
-        "folds takes. It carries the same information as F0 and is given "
-        "because a waveform is measured in time, not in frequency.",
+        "Period is the time a single cycle of the vocal folds takes, in "
+        "milliseconds. It is one second divided by F0, so to get the "
+        "frequency back divide 1000 by it, not 1: 100 hertz is a period of "
+        "10 milliseconds, and 1000 divided by 10 is 100 again. It carries "
+        "the same information as F0 and is given because a waveform is "
+        "measured in time, not in frequency.",
         "",
     ]
 
@@ -758,7 +761,7 @@ def _vowel_block(r):
         )
         lines.append(
             f"  Pitch period: {r['period'] * 1000:.2f} milliseconds, the time one "
-            "cycle takes. Divide 1 by it to get the mean above."
+            "cycle takes. Divide 1000 by it to get the mean above back in hertz."
         )
         if r["f0_slope"]:
             lines.append(f"  Pitch slope: {r['f0_slope']:+.0f} hertz per second.")
@@ -1298,7 +1301,8 @@ def stats_list(frames, regions, start, end):
             "of frames.",
             f"  Pitch median: {np.median(f0):.0f} hertz.",
             f"  Pitch period, median: {1000 / np.median(f0):.2f} milliseconds, "
-            "the time one cycle takes. Divide 1 by it to get the median above.",
+            "the time one cycle takes. Divide 1000 by it to get the median "
+            "above back in hertz.",
             f"  Pitch mean: {f0.mean():.0f} hertz.",
             f"  Pitch range: {f0.min():.0f} to {f0.max():.0f} hertz.",
             f"  Pitch period range: {1000 / f0.max():.2f} to "
