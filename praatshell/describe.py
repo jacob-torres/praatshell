@@ -1139,6 +1139,116 @@ def consonant_summary(rows):
     return out
 
 
+# --- tables for the single-measure commands ---------------------------
+
+
+def events_csv(frames, regions):
+    """The region timeline, as the events command reports it."""
+    columns = [
+        "region", "start_s", "end_s", "duration_ms", "kind",
+        "intensity_db", "f0_hz",
+    ]
+    rows = []
+    for i, r in enumerate(regions, 1):
+        s = r.stats
+        rows.append([
+            i,
+            _num(frames.absolute(r.start), 3),
+            _num(frames.absolute(r.end), 3),
+            _num(r.duration * 1000, 1),
+            r.kind,
+            _num(s.get("intensity_mean"), 1),
+            _num(s.get("f0"), 1),
+        ])
+    return columns, rows
+
+
+def wave_csv(frames, regions):
+    """The waveform's shape region by region, as the wave command reports it."""
+    columns = [
+        "region", "start_s", "end_s", "duration_ms", "kind",
+        "peak_amplitude", "peak_time_s", "rms", "asymmetry",
+        "attack_ms", "steady_ms", "decay_ms", "cycles", "period_ms", "clipped",
+    ]
+    rows = []
+    for i, r in enumerate(regions, 1):
+        s = r.stats
+        peak_time = s.get("peak_time")
+        rows.append([
+            i,
+            _num(frames.absolute(r.start), 3),
+            _num(frames.absolute(r.end), 3),
+            _num(r.duration * 1000, 1),
+            r.kind,
+            _num(s.get("peak_amp"), 4),
+            _num(frames.absolute(peak_time) if peak_time is not None else None, 3),
+            _num(s.get("rms"), 4),
+            _num(s.get("asymmetry"), 3),
+            _num(s["attack"] * 1000 if "attack" in s else None, 1),
+            _num(s["steady"] * 1000 if "steady" in s else None, 1),
+            _num(s["decay"] * 1000 if "decay" in s else None, 1),
+            _num(s.get("cycles"), 1),
+            _num(s["period"] * 1000 if s.get("period") else None, 2),
+            "yes" if s.get("clipped") else "no",
+        ])
+    return columns, rows
+
+
+def spectrum_csv(frames, regions):
+    """Energy per band region by region, as the spectrum command reports it."""
+    bands = [f"band_{lo:.0f}_{hi:.0f}_hz_db" for lo, hi, _ in frames.band_ranges]
+    columns = (
+        ["region", "start_s", "end_s", "kind"]
+        + bands
+        + ["centre_of_gravity_hz", "zero_crossings_per_s"]
+    )
+    rows = []
+    for i, r in enumerate(regions, 1):
+        s = r.stats
+        row = [
+            i,
+            _num(frames.absolute(r.start), 3),
+            _num(frames.absolute(r.end), 3),
+            r.kind,
+        ]
+        values = list(s.get("bands") or [])
+        row += [_num(v, 1) for v in values] + [""] * (len(bands) - len(values))
+        row += [_num(s.get("cog"), 1), _num(s.get("zcr"), 1)]
+        rows.append(row)
+    return columns, rows
+
+
+def slice_csv(time, peaks, cog):
+    """The strongest components at one instant, as slice reports them."""
+    columns = ["time_s", "rank", "frequency_hz", "centre_of_gravity_hz"]
+    return columns, [
+        [_num(time, 3), n, _num(p, 1), _num(cog, 1)]
+        for n, p in enumerate(peaks, 1)
+    ]
+
+
+def compare_csv(name_a, name_b, stats_a, stats_b):
+    """The two sides of a comparison, measure by measure."""
+    columns = ["measure", "unit", "a", "a_value", "b", "b_value", "difference"]
+    rows = []
+    for key, unit in (
+        ("duration", "seconds"),
+        ("f0", "hertz"),
+        ("f1", "hertz"),
+        ("f2", "hertz"),
+        ("f3", "hertz"),
+        ("intensity", "decibels"),
+    ):
+        va, vb = stats_a.get(key), stats_b.get(key)
+        if va is None or vb is None:
+            continue
+        rows.append([
+            key, unit, name_a, _num(va, 2), name_b, _num(vb, 2),
+            _num(abs(va - vb), 2),
+        ])
+    return columns, rows
+
+
 # --- assembled reports ------------------------------------------------
 
 

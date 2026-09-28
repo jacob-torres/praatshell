@@ -33,12 +33,12 @@ HELP = [
     ("describe COMMAND", "Describe what a select or an edit would give, without keeping it."),
     ("vowels [COMMAND]", "Table every vowel: duration, voice onset time, pitch, formants."),
     ("consonants [COMMAND]", "Table every consonant: duration, kind, centre of gravity."),
-    ("events", "Just the timeline of regions."),
-    ("wave", "The waveform's physical shape: amplitude, periodicity, envelope."),
-    ("pitch", "Fundamental frequency over the selection."),
-    ("formants", "F1, F2 and F3 over the selection."),
-    ("intensity", "Loudness over the selection."),
-    ("spectrum", "Where energy sits in frequency."),
+    ("events [COMMAND]", "Just the timeline of regions."),
+    ("wave [COMMAND]", "The waveform's physical shape: amplitude, periodicity, envelope."),
+    ("pitch [COMMAND]", "Fundamental frequency over the selection."),
+    ("formants [COMMAND]", "F1, F2 and F3 over the selection."),
+    ("intensity [COMMAND]", "Loudness over the selection."),
+    ("spectrum [COMMAND]", "Where energy sits in frequency."),
     ("slice TIME", "The strongest frequencies at one instant."),
     ("compare A B", "Compare two segments, or two loaded sounds."),
     ("", ""),
@@ -199,8 +199,8 @@ class Shell(cmd.Cmd):
         except Exception as exc:
             self.say(f"Could not play that: {exc}")
 
-    def write_report(self, lines, suffix="", layers=None, frames=None,
-                     tables=None):
+    def write_report(self, lines, suffix="", preview="", layers=None,
+                     frames=None, tables=None):
         name = self.session.current
         start, end = self.session.selection()
         paths = report.write(
@@ -212,6 +212,7 @@ class Shell(cmd.Cmd):
             lines,
             frames=frames,
             suffix=suffix,
+            preview=preview,
             layers=layers,
             tables=tables,
         )
@@ -405,7 +406,8 @@ class Shell(cmd.Cmd):
         lines, columns, csv_rows = describe.vowel_report(frames, regions, rows)
         self.write_report(
             lines,
-            suffix=f"vowels_{suffix}" if suffix else "vowels",
+            suffix="vowels",
+            preview=suffix,
             tables=[(None, columns, csv_rows)],
         )
 
@@ -428,7 +430,8 @@ class Shell(cmd.Cmd):
         lines, columns, csv_rows = describe.consonant_report(frames, regions, rows)
         self.write_report(
             lines,
-            suffix=f"consonants_{suffix}" if suffix else "consonants",
+            suffix="consonants",
+            preview=suffix,
             tables=[(None, columns, csv_rows)],
         )
 
@@ -446,7 +449,7 @@ class Shell(cmd.Cmd):
         consonants = describe.consonant_csv(frames, regions)
         if consonants:
             tables.append(("consonants",) + consonants)
-        self.write_report(lines, frames=frames, suffix=suffix, tables=tables)
+        self.write_report(lines, frames=frames, preview=suffix, tables=tables)
 
     def write_whole_summary(self):
         """Refresh the whole-sound summary, which indexes the timed reports."""
@@ -468,7 +471,10 @@ class Shell(cmd.Cmd):
         )
 
     def do_events(self, arg):
-        """events. The timeline of regions, without the detail."""
+        """events, or events COMMAND. The timeline of regions, without detail."""
+        self._preview(arg, self._events, "events")
+
+    def _events(self, preview=""):
         frames, regions = self.analysed()
         lines = [f"The selection divides into {len(regions)} regions."]
         for i, r in enumerate(regions, 1):
@@ -478,10 +484,18 @@ class Shell(cmd.Cmd):
                 f"{fmt.duration(r.duration)}, {events.PLAIN[r.kind]}."
             )
         self.say(*lines)
-        self.write_report(lines, suffix="events", layers=[])
+        self.write_report(
+            lines,
+            suffix="events",
+            preview=preview,
+            tables=[(None,) + describe.events_csv(frames, regions)],
+        )
 
     def do_wave(self, arg):
-        """wave. The waveform's physical shape."""
+        """wave, or wave COMMAND. The waveform's physical shape."""
+        self._preview(arg, self._wave, "wave")
+
+    def _wave(self, preview=""):
         frames, regions = self.analysed()
         start, end = self.session.selection()
         lines = describe.overview(frames, self.session.current, start, end)
@@ -519,10 +533,18 @@ class Shell(cmd.Cmd):
             if "attack" in s:
                 spoken.append(f"Its envelope {describe.envelope_phrase(s)}.")
             self.say(*spoken)
-        self.write_report(lines, suffix="wave", layers=["intensity"], frames=frames)
+        self.write_report(
+            lines,
+            suffix="wave",
+            preview=preview,
+            tables=[(None,) + describe.wave_csv(frames, regions)],
+        )
 
     def do_pitch(self, arg):
-        """pitch. Fundamental frequency over the selection."""
+        """pitch, or pitch COMMAND. Fundamental frequency over the selection."""
+        self._preview(arg, self._pitch, "pitch")
+
+    def _pitch(self, preview=""):
         frames, _ = self.analysed()
         f0 = frames.f0[~np.isnan(frames.f0)]
         if not f0.size:
@@ -540,10 +562,15 @@ class Shell(cmd.Cmd):
             if not np.isnan(v):
                 lines.append(f"  {frames.absolute(t):.3f}: {v:.1f}")
         self.say(*lines[:4])
-        self.write_report(lines, suffix="pitch", layers=["pitch"], frames=frames)
+        self.write_report(
+            lines, suffix="pitch", preview=preview, layers=["pitch"], frames=frames
+        )
 
     def do_formants(self, arg):
-        """formants. F1, F2 and F3 over the selection."""
+        """formants, or formants COMMAND. F1, F2 and F3 over the selection."""
+        self._preview(arg, self._formants, "formants")
+
+    def _formants(self, preview=""):
         frames, regions = self.analysed()
         lines = []
         voiced = [r for r in regions if r.kind == events.VOICED]
@@ -585,10 +612,19 @@ class Shell(cmd.Cmd):
                     + ", ".join("" if np.isnan(v) else f"{v:.0f}" for v in row)
                 )
         self.say(*spoken[:3])
-        self.write_report(lines, suffix="formants", layers=["formants"], frames=frames)
+        self.write_report(
+            lines,
+            suffix="formants",
+            preview=preview,
+            layers=["formants"],
+            frames=frames,
+        )
 
     def do_intensity(self, arg):
-        """intensity. Loudness over the selection."""
+        """intensity, or intensity COMMAND. Loudness over the selection."""
+        self._preview(arg, self._intensity, "intensity")
+
+    def _intensity(self, preview=""):
         frames, _ = self.analysed()
         db = frames.intensity[~np.isnan(frames.intensity)]
         if not db.size:
@@ -607,10 +643,19 @@ class Shell(cmd.Cmd):
             if not np.isnan(v):
                 lines.append(f"  {frames.absolute(t):.3f}: {v:.1f}")
         self.say(*lines[:3])
-        self.write_report(lines, suffix="intensity", layers=["intensity"], frames=frames)
+        self.write_report(
+            lines,
+            suffix="intensity",
+            preview=preview,
+            layers=["intensity"],
+            frames=frames,
+        )
 
     def do_spectrum(self, arg):
-        """spectrum. Where energy sits in frequency."""
+        """spectrum, or spectrum COMMAND. Where energy sits in frequency."""
+        self._preview(arg, self._spectrum, "spectrum")
+
+    def _spectrum(self, preview=""):
         frames, regions = self.analysed()
         lines = [
             "Energy by frequency band. Bands stop at "
@@ -639,7 +684,12 @@ class Shell(cmd.Cmd):
             f"{len(regions)} regions.",
             *spoken,
         )
-        self.write_report(lines, suffix="spectrum", layers=["bands"], frames=frames)
+        self.write_report(
+            lines,
+            suffix="spectrum",
+            preview=preview,
+            tables=[(None,) + describe.spectrum_csv(frames, regions)],
+        )
 
     def do_slice(self, arg):
         """slice TIME. The strongest frequencies at one instant."""
@@ -661,7 +711,11 @@ class Shell(cmd.Cmd):
             f"The recording carries nothing above {nyquist:.0f} hertz.",
         ]
         self.say(*lines)
-        self.write_report(lines, suffix=f"slice{time * 1000:.0f}ms", layers=[])
+        self.write_report(
+            lines,
+            suffix=f"slice{time * 1000:.0f}ms",
+            tables=[(None,) + describe.slice_csv(time, peaks, cog)],
+        )
 
     def do_compare(self, arg):
         """compare A B. Compare two segments, or two loaded sounds."""
@@ -699,8 +753,10 @@ class Shell(cmd.Cmd):
             lines,
             suffix="compare",
             stem=stem,
+            tables=[(None,) + describe.compare_csv(a[0], b[0], stats[0], stats[1])],
         )
-        self.say(f"Written: {os.path.relpath(paths[0], self.root)}.")
+        rel = [os.path.relpath(p, self.root) for p in paths]
+        self.say(f"Written: {fmt.join(rel)}.")
 
     def _resolve(self, token):
         """A token is a segment label in the current sound, or a sound name."""

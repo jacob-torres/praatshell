@@ -235,14 +235,31 @@ Descriptions land in the reports folder beside this file. Numbers go one level
 down, in reports/csv, so the reports folder stays a list of things to read.
 
     reports/
-      NAME.txt                           the whole-sound summary
-      NAME__START-ENDms.txt              the prose description of one stretch
-      NAME__START-ENDms_pitch.txt        single-layer reports, as you ask for them
+      NAME.txt                             the whole-sound summary
+      NAME__START-ENDms.txt                the prose description of one stretch
+      NAME__START-ENDms_pitch.txt          one file per command, as you ask
       csv/
-        NAME__START-ENDms_pitch.csv      fundamental frequency, frame by frame
-        NAME__START-ENDms_formants.csv   F1, F2, F3
-        NAME__START-ENDms_intensity.csv  loudness in decibels
-        NAME__START-ENDms_bands.csv      energy per frequency band
+        NAME__START-ENDms_pitch.csv        fundamental frequency, frame by frame
+        NAME__START-ENDms_formants.csv     F1, F2, F3, frame by frame
+        NAME__START-ENDms_intensity.csv    loudness in decibels, frame by frame
+        NAME__START-ENDms_bands.csv        energy per frequency band
+        NAME__START-ENDms_events.csv       the region timeline
+        NAME__START-ENDms_wave.csv         peak, envelope and periodicity
+        NAME__START-ENDms_spectrum.csv     energy per band, region by region
+        NAME__START-ENDms_vowels.csv       one row per vowel
+        NAME__START-ENDms_consonants.csv   one row per consonant
+        NAME__START-ENDms_slice250ms.csv   the components at one instant
+        A-vs-B_compare.csv                 two segments or sounds, side by side
+
+Every command writes a .txt and a .csv of the same numbers: the .txt to read,
+the .csv to load. describe writes the lot, since it covers everything.
+
+CSV names read the same way round throughout: the sound, the stretch, then the
+preview if there was one, then what was measured. So *_pitch.csv gathers every
+pitch file whatever produced it, and a preview never overwrites the real
+sound's numbers. The .txt of a preview reads the other way round, as
+NAME__START-ENDms_pitch_reverse.txt, because a report's own name is what you
+look for when reading.
 
 NAME.txt is the one to open first. Its name has no time span in it, so it sorts
 above every other file for that sound. describe rewrites it each time, and it
@@ -254,6 +271,28 @@ that sound.
 The CSV files open in R or a spreadsheet. The pitch CSV has two columns for
 frequency: f0_hz, with octave errors removed, and f0_raw_hz exactly as Praat
 measured it, so nothing is hidden from you.
+
+
+AN ARGUMENT FOR EVERY MEASUREMENT
+
+describe takes a selection or an edit as an argument, and so does every other
+command that measures something:
+
+    pitch select 0 0.35
+    formants select seg 3
+    spectrum reverse
+    wave flatten 150
+    events select 0.2 0.6
+    intensity normalize
+
+The command after it runs first, its result is measured, and then the sound
+and the selection are put back as they were. Nothing is played and nothing
+joins the undo history, so this is a way to see what a stretch holds, or what
+an edit would do, without committing to it.
+
+slice and compare are the exceptions. They already take arguments of their own
+- a time, and two names - so there is nowhere to put a second one. Select the
+stretch you want first, then run them.
 
 
 TIMES
