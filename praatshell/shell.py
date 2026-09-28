@@ -626,7 +626,7 @@ class Shell(cmd.Cmd):
                     f"  {frames.absolute(t):.3f}: "
                     + ", ".join("" if np.isnan(v) else f"{v:.0f}" for v in row)
                 )
-        self.say(*spoken[:3])
+        self.say(*spoken)
         self.write_report(
             lines,
             suffix="formants",
