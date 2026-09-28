@@ -831,6 +831,314 @@ def vowel_summary(rows):
     return out
 
 
+# --- the consonant table ----------------------------------------------
+
+CONSONANT_COLUMNS = [
+    ("consonant", "No."),
+    ("start_s", "Start"),
+    ("end_s", "End"),
+    ("duration_ms", "Dur"),
+    ("kind", "Kind"),
+    ("vot_ms", "VOT"),
+    ("cog_hz", "CoG"),
+    ("zero_crossings_per_s", "Zero X"),
+    ("intensity_db", "Level"),
+    ("voiced_percent", "Voiced %"),
+    ("likely", "Likely"),
+]
+
+# Short names for the table, where the full phrases would not fit.
+CONSONANT_KIND = {
+    events.SILENCE: "closure",
+    events.BURST: "burst",
+    events.FRICATION: "frication",
+    events.APERIODIC: "aperiodic",
+}
+
+CONSONANT_LIKELY = {
+    events.SILENCE: "a stop closure, or a pause",
+    events.BURST: "a stop release",
+    events.FRICATION: "a fricative, or aspiration after a stop",
+    events.APERIODIC: "a weak fricative, an approximant, or aspiration",
+}
+
+SIBILANT_COG = 3500.0  # a centre of gravity this high suggests s or sh
+
+
+def consonant_rows(frames, regions):
+    """One row per region that is not a vowel.
+
+    Leading and trailing silence is left out, being room tone rather than a
+    consonant. Silence between two sounds stays, because a stop closure is
+    silence and the length of it is a real measurement.
+
+    Voiced consonants do not appear at all. Nasals, laterals and voiced
+    fricatives are periodic, so they sit inside a voiced region and this
+    classifier cannot tell them from the vowel beside them. What is listed is
+    the voiceless consonants, the closures, the bursts and the aspiration.
+    """
+    if not regions:
+        return []
+    speech = [i for i, r in enumerate(regions) if r.kind != events.SILENCE]
+    if not speech:
+        return []
+    first, last = speech[0], speech[-1]
+
+    # Where each voice onset time is anchored, so that the row holding the
+    # release carries it and the two tables cannot disagree.
+    anchors = {}
+    for i, r in enumerate(regions):
+        if r.kind != events.VOICED:
+            continue
+        v = vot_at(frames, regions, i)
+        if not v:
+            continue
+        for n, region in enumerate(regions):
+            if region.start <= v.anchor < region.end:
+                anchors[n] = v.seconds
+                break
+
+    # A vowel is followed through the devoiced tail past its region's end, so
+    # the region after a vowel can begin inside it. Trim that overlap, or the
+    # same stretch is counted twice: once ending a vowel, once as a consonant.
+    vowel_spans = [
+        (r.start, vowel_end(frames, regions, i))
+        for i, r in enumerate(regions)
+        if r.kind == events.VOICED
+    ]
+
+    rows = []
+    for i, r in enumerate(regions):
+        if r.kind == events.VOICED:
+            continue
+        if r.kind == events.SILENCE and not first < i < last:
+            continue
+        start = r.start
+        for vowel_start, vowel_finish in vowel_spans:
+            # Only a vowel that began before this region can run into it.
+            if vowel_start < r.start and vowel_finish > start:
+                start = min(vowel_finish, r.end)
+        if start >= r.end:
+            continue  # a vowel's tail covers the whole of this region
+        # Measured again over what is left, so a trimmed region's centre of
+        # gravity and level describe the consonant rather than the vowel.
+        s = r.stats if start == r.start else events.measure(
+            events.Region(r.kind, start, r.end), frames
+        )
+        rows.append(
+            {
+                "number": len(rows) + 1,
+                "start": frames.absolute(start),
+                "end": frames.absolute(r.end),
+                "duration": r.end - start,
+                "kind": r.kind,
+                "vot": anchors.get(i),
+                "cog": s.get("cog"),
+                "zcr": s.get("zcr"),
+                "intensity": s.get("intensity_mean"),
+                "peak_amp": s.get("peak_amp"),
+                "voiced_fraction": s.get("voiced_fraction"),
+            }
+        )
+    return rows
+
+
+def consonant_csv_rows(rows):
+    """The same rows as the CSV's columns, in CONSONANT_COLUMNS order."""
+    out = []
+    for r in rows:
+        out.append(
+            [
+                r["number"],
+                _num(r["start"], 3),
+                _num(r["end"], 3),
+                _num(r["duration"] * 1000, 1),
+                CONSONANT_KIND[r["kind"]],
+                _num(r["vot"] * 1000 if r["vot"] is not None else None, 1),
+                _num(r["cog"], 1),
+                _num(r["zcr"], 1),
+                _num(r["intensity"], 1),
+                _num(
+                    r["voiced_fraction"] * 100
+                    if r["voiced_fraction"] is not None
+                    else None,
+                    1,
+                ),
+                CONSONANT_LIKELY[r["kind"]],
+            ]
+        )
+    return out
+
+
+def consonant_csv(frames, regions, rows=None):
+    """The consonant table as (columns, rows) for a CSV, or None if empty."""
+    rows = consonant_rows(frames, regions) if rows is None else rows
+    if not rows:
+        return None
+    return [name for name, _ in CONSONANT_COLUMNS], consonant_csv_rows(rows)
+
+
+def consonant_table(frames, regions, rows=None):
+    """The heading, the notes and the aligned table. describe carries it too."""
+    rows = consonant_rows(frames, regions) if rows is None else rows
+    if not rows:
+        return [
+            "CONSONANT TABLE",
+            "",
+            "No consonant was found here: nothing in this stretch falls "
+            "outside the vowels and the silence around them.",
+        ]
+    lines = [
+        "CONSONANT TABLE",
+        "",
+        f"Consonants found: {len(rows)}.",
+        "",
+        "One row per region that is not a vowel. Times are in seconds, "
+        "durations and voice onset times in milliseconds, frequencies in "
+        "hertz. CoG is the centre of gravity of the energy, the clearest "
+        "clue to where in the mouth the constriction is: the further forward "
+        "the constriction, the higher it usually sits. Zero X counts zero "
+        "crossings per second, which rises with noise.",
+        "",
+        "Voiced consonants are missing from this table. Nasals, laterals and "
+        "voiced fricatives are periodic, so they sit inside a voiced region "
+        "and this tool cannot tell them from the vowel beside them. What is "
+        "listed is the voiceless consonants, the stop closures, the bursts "
+        "and the aspiration. Check the rows against what you know was said.",
+        "",
+        "A stop is spread across consecutive rows: a closure, then a burst, "
+        "then the aspiration before the vowel. Its voice onset time is given "
+        "once, on the row the release itself falls in.",
+        "",
+    ]
+
+    display = [
+        [
+            str(r["number"]),
+            f"{r['start']:.3f}",
+            f"{r['end']:.3f}",
+            f"{r['duration'] * 1000:.0f}",
+            CONSONANT_KIND[r["kind"]],
+            "" if r["vot"] is None else f"{r['vot'] * 1000:.0f}",
+            _cell(r["cog"]),
+            _cell(r["zcr"]),
+            _cell(r["intensity"]),
+            ""
+            if r["voiced_fraction"] is None
+            else f"{r['voiced_fraction'] * 100:.0f}",
+            CONSONANT_LIKELY[r["kind"]],
+        ]
+        for r in rows
+    ]
+    lines += _table([h for _, h in CONSONANT_COLUMNS], display, "rrrrlrrrrrl")
+
+    lines += [
+        "",
+        "Everything in that table is measured except the last column, which "
+        "is the tool reading a manner of articulation off the region's "
+        "character. It never names a place of articulation: CoG leans that "
+        "way, but one number cannot carry a decision that needs the formant "
+        "transitions into the vowel as well.",
+    ]
+    return lines
+
+
+def _consonant_block(r):
+    """One consonant, a fact per line, measurement kept apart from guesswork."""
+    lines = [
+        "MEASURED",
+        f"Consonant {r['number']}: {fmt.secs(r['start'])} to "
+        f"{fmt.secs(r['end'])}, lasting {fmt.duration(r['duration'])}.",
+        f"  Character: {events.PLAIN[r['kind']]}.",
+    ]
+    if r["vot"] is not None:
+        lines.append(
+            f"  Voice onset time: {fmt.ms(r['vot'])}, from this release to the "
+            "voicing after it."
+        )
+    if r["cog"]:
+        lines.append(f"  Centre of gravity: {fmt.hz_plain(r['cog'])}.")
+    if r["zcr"]:
+        lines.append(f"  Zero crossings: {r['zcr']:.0f} per second.")
+    if r["intensity"]:
+        lines.append(f"  Mean level: {fmt.db(r['intensity'])}.")
+    if r["peak_amp"] is not None:
+        lines.append(f"  Peak amplitude: {fmt.amp(r['peak_amp'])}.")
+    if r["voiced_fraction"]:
+        lines.append(
+            f"  Pitch was detectable in {fmt.pct(r['voiced_fraction'])} of frames."
+        )
+
+    guess = Guess(f"this is {CONSONANT_LIKELY[r['kind']]}", MODERATE)
+    if r["kind"] == events.SILENCE:
+        guess.note(
+            "A stop closure and a pause are both silence; only what surrounds "
+            "them tells the two apart."
+        )
+    if r["kind"] in (events.FRICATION, events.APERIODIC) and r["cog"]:
+        if r["cog"] > SIBILANT_COG:
+            guess.note(
+                f"Its energy centres at {r['cog']:.0f} hertz, high enough for a "
+                "sibilant such as s or sh."
+            )
+        else:
+            guess.note(
+                f"Its energy centres at {r['cog']:.0f} hertz, low for a "
+                "sibilant, which fits a quieter fricative such as f or th, or "
+                "aspiration."
+            )
+    if r["voiced_fraction"] and r["voiced_fraction"] > 0.5:
+        guess.downgrade(
+            LOW,
+            f"Pitch was found in {fmt.pct(r['voiced_fraction'])} of its frames, "
+            "so this may be a voiced consonant that the classifier only partly "
+            "separated from the vowel beside it.",
+        )
+    lines.append("LIKELY (the tool's guess, not a measurement)")
+    lines += guess.lines()
+    return lines
+
+
+def consonant_report(frames, regions, rows=None):
+    """The consonant table as report lines, plus the columns and CSV rows."""
+    rows = consonant_rows(frames, regions) if rows is None else rows
+    lines = consonant_table(frames, regions, rows)
+    if rows:
+        lines += ["", "CONSONANT BY CONSONANT", ""]
+        for r in rows:
+            lines += _consonant_block(r)
+            lines.append("")
+    return lines, [name for name, _ in CONSONANT_COLUMNS], consonant_csv_rows(rows)
+
+
+def consonant_summary(rows):
+    """The two or three sentences the shell speaks."""
+    if not rows:
+        return ["No consonant was found in this stretch."]
+    kinds = {}
+    for r in rows:
+        kinds[r["kind"]] = kinds.get(r["kind"], 0) + 1
+    parts = [f"{n} {CONSONANT_KIND[k]}" for k, n in kinds.items()]
+    out = [
+        f"Measured {len(rows)} consonant{'s' if len(rows) != 1 else ''}: "
+        f"{fmt.join(parts)}."
+    ]
+    with_vot = [r for r in rows if r["vot"] is not None]
+    if with_vot:
+        out.append(
+            "Voice onset time: "
+            + fmt.join(
+                f"{fmt.ms(r['vot'])} at consonant {r['number']}"
+                for r in with_vot[:4]
+            )
+            + "."
+        )
+    out.append(
+        "Voiced consonants are not in this table; the report says why."
+    )
+    return out
+
+
 # --- assembled reports ------------------------------------------------
 
 
@@ -923,6 +1231,7 @@ def full_report(frames, regions, sound_name, start, end):
     lines = ["ACOUSTIC DESCRIPTION", ""]
     lines += stats_list(frames, regions, start, end)
     lines += [""] + vowel_table(frames, regions)
+    lines += [""] + consonant_table(frames, regions)
     lines += ["", "DESCRIPTION", ""]
     lines += overview(frames, sound_name, start, end)
     lines += ["", f"The tool found {len(regions)} regions.", ""]

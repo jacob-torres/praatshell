@@ -41,16 +41,17 @@ def header(sound_name, source, start, end):
 
 
 def write(root, sound_name, source, start, end, lines, frames=None, suffix="",
-          layers=None, stem=None, table=None, table_name=None):
+          layers=None, stem=None, tables=None):
     """Write the .txt, plus a .csv per analysis layer. Returns the paths.
 
     suffix names a single-layer report, so `pitch` writes spkr1__0-1204ms_pitch.txt
     beside its spkr1__0-1204ms_pitch.csv.
 
-    table is (columns, rows) for numbers that are a table rather than one value
-    per frame, as the vowel table is. table_name makes it a layer alongside the
-    frame CSVs, so a description writes its vowels beside its pitch and
-    formants; without one it becomes the report's only CSV.
+    tables is a list of (name, columns, rows) for numbers that form a table
+    rather than one value per frame, as the vowel and consonant tables do. A
+    name makes that table a layer alongside the frame CSVs, so a description
+    writes its vowels and consonants beside its pitch and formants; a name of
+    None makes it the report's own CSV, taking the report's own filename.
     """
     folder = _dir(root)
     base = stem or _stem(sound_name, start, end)
@@ -66,10 +67,9 @@ def write(root, sound_name, source, start, end, lines, frames=None, suffix="",
     csv_base = f"{base}_{suffix}" if suffix and layers is None else base
     if frames is not None:
         written += _write_csvs(_csv_dir(root), csv_base, frames, layers)
-    if table is not None:
-        columns, rows = table
-        # Named, the table is one more layer beside the frame CSVs. Unnamed, it
-        # is the whole of the report's numbers and takes the report's own name.
+    for table_name, columns, rows in tables or ():
+        # Named, a table is one more layer beside the frame CSVs. Unnamed, it is
+        # the whole of the report's numbers and takes the report's own name.
         name = (
             f"{csv_base}_{table_name}.csv"
             if table_name

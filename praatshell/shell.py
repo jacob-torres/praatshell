@@ -32,6 +32,7 @@ HELP = [
     ("describe", "Full description of the selection: regions, pitch, formants, shape."),
     ("describe COMMAND", "Describe what a select or an edit would give, without keeping it."),
     ("vowels [COMMAND]", "Table every vowel: duration, voice onset time, pitch, formants."),
+    ("consonants [COMMAND]", "Table every consonant: duration, kind, centre of gravity."),
     ("events", "Just the timeline of regions."),
     ("wave", "The waveform's physical shape: amplitude, periodicity, envelope."),
     ("pitch", "Fundamental frequency over the selection."),
@@ -199,7 +200,7 @@ class Shell(cmd.Cmd):
             self.say(f"Could not play that: {exc}")
 
     def write_report(self, lines, suffix="", layers=None, frames=None,
-                     table=None, table_name=None):
+                     tables=None):
         name = self.session.current
         start, end = self.session.selection()
         paths = report.write(
@@ -212,8 +213,7 @@ class Shell(cmd.Cmd):
             frames=frames,
             suffix=suffix,
             layers=layers,
-            table=table,
-            table_name=table_name,
+            tables=tables,
         )
         rel = [os.path.relpath(p, self.root) for p in paths]
         self.say(f"Written: {fmt.join(rel)}.")
@@ -406,7 +406,30 @@ class Shell(cmd.Cmd):
         self.write_report(
             lines,
             suffix=f"vowels_{suffix}" if suffix else "vowels",
-            table=(columns, csv_rows),
+            tables=[(None, columns, csv_rows)],
+        )
+
+    def do_consonants(self, arg):
+        """consonants, or consonants COMMAND. Table every consonant.
+
+        Duration, kind, voice onset time, centre of gravity and level, one row
+        per consonant, as a table in the .txt and as a .csv beside it. It takes
+        the same arguments as describe: consonants select seg 3, or consonants
+        reverse.
+        """
+        self._preview(arg, self._consonants, "consonants")
+
+    def _consonants(self, suffix=""):
+        frames, regions = self.analysed()
+        rows = describe.consonant_rows(frames, regions)
+        self.say(*describe.consonant_summary(rows))
+        if not rows:
+            return
+        lines, columns, csv_rows = describe.consonant_report(frames, regions, rows)
+        self.write_report(
+            lines,
+            suffix=f"consonants_{suffix}" if suffix else "consonants",
+            tables=[(None, columns, csv_rows)],
         )
 
     def _describe(self, suffix=""):
@@ -416,13 +439,14 @@ class Shell(cmd.Cmd):
             frames, regions, self.session.current, start, end
         )
         self.say(*describe.summary(frames, regions, start, end))
-        self.write_report(
-            lines,
-            frames=frames,
-            suffix=suffix,
-            table=describe.vowel_csv(frames, regions),
-            table_name="vowels",
-        )
+        tables = []
+        vowels = describe.vowel_csv(frames, regions)
+        if vowels:
+            tables.append(("vowels",) + vowels)
+        consonants = describe.consonant_csv(frames, regions)
+        if consonants:
+            tables.append(("consonants",) + consonants)
+        self.write_report(lines, frames=frames, suffix=suffix, tables=tables)
 
     def write_whole_summary(self):
         """Refresh the whole-sound summary, which indexes the timed reports."""

@@ -133,6 +133,38 @@ The closest reference vowel in the last column is a guess, and the block for
 that vowel gives its confidence and the runner-up.
 
 
+EVERY CONSONANT AT ONCE
+
+consonants does for consonants what vowels does for vowels:
+
+    consonants
+    consonants select seg 3
+    consonants reverse
+
+One row per region that is not a vowel, with its duration, its kind, its voice
+onset time where it holds a stop release, the centre of gravity of its energy,
+its level and how much of it carried a pitch. It writes
+NAME__START-ENDms_consonants.txt and a .csv beside it, and takes the same
+arguments as describe.
+
+Read one limitation before you use it. Voiced consonants are not in the table.
+Nasals, laterals and voiced fricatives are periodic, so they sit inside a
+voiced region and this tool cannot tell them from the vowel next to them: in
+"the word is pat" the whole of "the word is" comes out as a single vowel row.
+What consonants lists is the voiceless consonants, the stop closures, the
+bursts and the aspiration. Check the rows against what you know was said.
+
+A stop is spread across consecutive rows, as a closure, then a burst, then the
+aspiration before the vowel, and its voice onset time is given once, on the
+row the release falls in. That is the same figure the vowel table gives for
+the vowel after it, computed in the same place, so the two cannot disagree.
+
+CoG, the centre of gravity of the energy, is the clearest single clue to where
+in the mouth the constriction is, and the table leans on it for the Likely
+column. It never names a place of articulation: one number cannot carry a
+decision that needs the formant transitions into the vowel as well.
+
+
 WHAT A DESCRIBE REPORT HOLDS
 
 The report opens with MEASUREMENTS: a plain list, one number per line, that
@@ -147,11 +179,12 @@ because at a hundred hertz a period is only about ten milliseconds long. It is
 given for the median and as a range. The range runs the opposite way round
 from the pitch range, since a shorter period is a higher frequency.
 
-The VOWEL TABLE from the vowels command follows, so a description carries its
-vowels without your having to run vowels as well, and its numbers are written
-to NAME__START-ENDms_vowels.csv beside the other CSVs. The per-vowel blocks
-stay with vowels, because a description already walks through every region one
-at a time.
+The VOWEL TABLE and the CONSONANT TABLE follow, so a description carries the
+segments of a stretch without your having to run vowels and consonants as
+well, and their numbers are written to NAME__START-ENDms_vowels.csv and
+NAME__START-ENDms_consonants.csv beside the other CSVs. The per-segment blocks
+stay with those two commands, because a description already walks through
+every region one at a time.
 
 The prose DESCRIPTION comes last: the overview, every region in turn, and the
 contours.
