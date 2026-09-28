@@ -148,9 +148,10 @@ given for the median and as a range. The range runs the opposite way round
 from the pitch range, since a shorter period is a higher frequency.
 
 The VOWEL TABLE from the vowels command follows, so a description carries its
-vowels without your having to run vowels as well. Only the table comes across;
-the per-vowel blocks and the CSV stay with vowels, because a description
-already walks through every region one at a time.
+vowels without your having to run vowels as well, and its numbers are written
+to NAME__START-ENDms_vowels.csv beside the other CSVs. The per-vowel blocks
+stay with vowels, because a description already walks through every region one
+at a time.
 
 The prose DESCRIPTION comes last: the overview, every region in turn, and the
 contours.

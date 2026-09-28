@@ -694,6 +694,14 @@ def vowel_table(frames, regions, rows=None):
     return lines
 
 
+def vowel_csv(frames, regions, rows=None):
+    """The vowel table as (columns, rows) for a CSV, or None if no vowels."""
+    rows = vowel_rows(frames, regions) if rows is None else rows
+    if not rows:
+        return None
+    return [name for name, _ in VOWEL_COLUMNS], vowel_csv_rows(rows)
+
+
 def vowel_report(frames, regions, rows=None):
     """The vowel table as report lines, plus the columns and rows for the CSV.
 

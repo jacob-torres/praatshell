@@ -41,14 +41,16 @@ def header(sound_name, source, start, end):
 
 
 def write(root, sound_name, source, start, end, lines, frames=None, suffix="",
-          layers=None, stem=None, table=None):
+          layers=None, stem=None, table=None, table_name=None):
     """Write the .txt, plus a .csv per analysis layer. Returns the paths.
 
     suffix names a single-layer report, so `pitch` writes spkr1__0-1204ms_pitch.txt
     beside its spkr1__0-1204ms_pitch.csv.
 
-    table is (columns, rows) for a report whose numbers are a table of its own
-    rather than one value per frame, as the vowel table is.
+    table is (columns, rows) for numbers that are a table rather than one value
+    per frame, as the vowel table is. table_name makes it a layer alongside the
+    frame CSVs, so a description writes its vowels beside its pitch and
+    formants; without one it becomes the report's only CSV.
     """
     folder = _dir(root)
     base = stem or _stem(sound_name, start, end)
@@ -59,15 +61,21 @@ def write(root, sound_name, source, start, end, lines, frames=None, suffix="",
         fh.write("\n".join(header(sound_name, source, start, end) + lines) + "\n")
     written.append(txt)
 
+    # A full report with a suffix is a preview of an edit. Keep its numbers
+    # apart from the real sound's: pat__0-1204ms_reverse_pitch.csv.
+    csv_base = f"{base}_{suffix}" if suffix and layers is None else base
+    if frames is not None:
+        written += _write_csvs(_csv_dir(root), csv_base, frames, layers)
     if table is not None:
         columns, rows = table
-        name = f"{base}_{suffix}.csv" if suffix else f"{base}.csv"
+        # Named, the table is one more layer beside the frame CSVs. Unnamed, it
+        # is the whole of the report's numbers and takes the report's own name.
+        name = (
+            f"{csv_base}_{table_name}.csv"
+            if table_name
+            else (f"{base}_{suffix}.csv" if suffix else f"{base}.csv")
+        )
         written.append(_csv(_csv_dir(root), name, columns, rows))
-    elif frames is not None:
-        # A full report with a suffix is a preview of an edit. Keep its numbers
-        # apart from the real sound's: pat__0-1204ms_reverse_pitch.csv.
-        csv_base = f"{base}_{suffix}" if suffix and layers is None else base
-        written += _write_csvs(_csv_dir(root), csv_base, frames, layers)
     return written
 
 

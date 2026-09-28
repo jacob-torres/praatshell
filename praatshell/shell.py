@@ -198,7 +198,8 @@ class Shell(cmd.Cmd):
         except Exception as exc:
             self.say(f"Could not play that: {exc}")
 
-    def write_report(self, lines, suffix="", layers=None, frames=None, table=None):
+    def write_report(self, lines, suffix="", layers=None, frames=None,
+                     table=None, table_name=None):
         name = self.session.current
         start, end = self.session.selection()
         paths = report.write(
@@ -212,6 +213,7 @@ class Shell(cmd.Cmd):
             suffix=suffix,
             layers=layers,
             table=table,
+            table_name=table_name,
         )
         rel = [os.path.relpath(p, self.root) for p in paths]
         self.say(f"Written: {fmt.join(rel)}.")
@@ -414,7 +416,13 @@ class Shell(cmd.Cmd):
             frames, regions, self.session.current, start, end
         )
         self.say(*describe.summary(frames, regions, start, end))
-        self.write_report(lines, frames=frames, suffix=suffix)
+        self.write_report(
+            lines,
+            frames=frames,
+            suffix=suffix,
+            table=describe.vowel_csv(frames, regions),
+            table_name="vowels",
+        )
 
     def write_whole_summary(self):
         """Refresh the whole-sound summary, which indexes the timed reports."""
