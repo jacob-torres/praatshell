@@ -117,10 +117,11 @@ def _write_csvs(folder, stem, frames, layers=None):
             _csv(
                 folder,
                 stem + "_pitch.csv",
-                ["time_s", "f0_hz", "f0_raw_hz", "hnr_db", "voiced"],
+                ["time_s", "f0_hz", "period_ms", "f0_raw_hz", "hnr_db", "voiced"],
                 zip(
                     times,
                     _col(frames.f0),
+                    _periods_ms(frames.f0),
                     _col(frames.f0_raw if frames.f0_raw.size else frames.f0),
                     _col(frames.hnr),
                     ["yes" if v else "no" for v in frames.voiced],
@@ -177,6 +178,17 @@ def _csv(folder, name, columns, rows):
 
 def _col(array):
     return [_val(v) for v in np.asarray(array).ravel()]
+
+
+def _periods_ms(f0):
+    """How long one cycle takes, beside the frequency it is the reciprocal of.
+
+    Empty wherever no pitch was found, so the column lines up with f0_hz.
+    """
+    return [
+        "" if np.isnan(v) or v <= 0 else 1000.0 / float(v)
+        for v in np.asarray(f0).ravel()
+    ]
 
 
 def _val(v):

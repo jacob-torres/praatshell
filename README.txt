@@ -270,7 +270,10 @@ that sound.
 
 The CSV files open in R or a spreadsheet. The pitch CSV has two columns for
 frequency: f0_hz, with octave errors removed, and f0_raw_hz exactly as Praat
-measured it, so nothing is hidden from you.
+measured it, so nothing is hidden from you. Beside them is period_ms, one
+divided by f0_hz, which is the time a single cycle takes. The pitch command
+reports the same thing in its .txt, as a figure for the mean and the range and
+then frame by frame.
 
 
 AN ARGUMENT FOR EVERY MEASUREMENT

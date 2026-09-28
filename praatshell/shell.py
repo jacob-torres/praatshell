@@ -552,16 +552,24 @@ class Shell(cmd.Cmd):
             return
         lines = [
             f"Pitch measured in {fmt.pct(f0.size / len(frames.f0))} of frames.",
-            f"Mean {f0.mean():.1f} hertz. Range {f0.min():.1f} to {f0.max():.1f} hertz.",
+            f"Mean {f0.mean():.1f} hertz, a period of "
+            f"{1000 / f0.mean():.2f} milliseconds.",
+            f"Range {f0.min():.1f} to {f0.max():.1f} hertz, a period of "
+            f"{1000 / f0.max():.2f} down to {1000 / f0.min():.2f} milliseconds.",
             f"Standard deviation {f0.std():.1f} hertz.",
             f"The contour is {describe._overall_shape(f0)}.",
             "",
-            "Frame by frame, time in seconds then fundamental frequency in hertz:",
+            "The period is one divided by the frequency: the time a single "
+            "cycle takes. A shorter period is a higher frequency, which is why "
+            "the range above runs the opposite way round.",
+            "",
+            "Frame by frame, time in seconds, then fundamental frequency in "
+            "hertz, then period in milliseconds:",
         ]
         for t, v in zip(frames.times, frames.f0):
             if not np.isnan(v):
-                lines.append(f"  {frames.absolute(t):.3f}: {v:.1f}")
-        self.say(*lines[:4])
+                lines.append(f"  {frames.absolute(t):.3f}: {v:.1f}, {1000 / v:.2f}")
+        self.say(*lines[:5])
         self.write_report(
             lines, suffix="pitch", preview=preview, layers=["pitch"], frames=frames
         )
