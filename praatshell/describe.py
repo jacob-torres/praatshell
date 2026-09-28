@@ -1131,8 +1131,7 @@ def consonant_summary(rows):
         out.append(
             "Voice onset time: "
             + fmt.join(
-                f"{fmt.ms(r['vot'])} at consonant {r['number']}"
-                for r in with_vot[:4]
+                f"{fmt.ms(r['vot'])} at consonant {r['number']}" for r in with_vot
             )
             + "."
         )

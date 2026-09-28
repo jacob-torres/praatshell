@@ -692,8 +692,13 @@ class Shell(cmd.Cmd):
                 lines.append(
                     f"  Centre of gravity {fmt.hz_plain(r.stats['cog'])}."
                 )
-            if band_lines and not spoken:
-                spoken.append(f"Region {i}: {band_lines[0].strip()}")
+            # One line for every region that has energy in it, not one example:
+            # which regions differ from which is the whole point of the command.
+            if band_lines:
+                headline = band_lines[0].strip().rstrip(".")
+                if r.stats.get("cog"):
+                    headline += f", centred at {fmt.hz_plain(r.stats['cog'])}"
+                spoken.append(f"Region {i}: {headline}.")
         self.say(
             f"Described energy in {len(frames.band_names)} frequency bands across "
             f"{len(regions)} regions.",
