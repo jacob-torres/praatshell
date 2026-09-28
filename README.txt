@@ -112,6 +112,11 @@ NAME__START-ENDms_vowels.txt as an aligned table followed by a fact-per-line
 block for each vowel, and to csv/NAME__START-ENDms_vowels.csv for R or a
 spreadsheet. It takes the same arguments as describe, listed above.
 
+Period is one divided by F0, the time a single cycle of the vocal folds takes,
+in milliseconds. It holds the same information as F0; it is there because a
+waveform is measured in time rather than in frequency, so it is the number to
+reach for when reading a wave off a spectrogram or an oscillogram.
+
 The table gives two durations. Dur runs from the onset of voicing to the
 offset of the formants, which is the vowel. Voiced is the part of that the
 pitch tracker found a pitch in. They differ when a vowel devoices at its end
@@ -133,9 +138,22 @@ WHAT A DESCRIBE REPORT HOLDS
 The report opens with MEASUREMENTS: a plain list, one number per line, that
 you can quote directly. Duration, voice onset time, sampling frequency, peak
 amplitude, the region count, how much of the stretch is voiced, pitch median,
-mean, range and net change, harmonics-to-noise ratio, level mean and range,
-loudness peaks, and the formants of the longest voiced region. The prose
-DESCRIPTION follows it: the overview, every region in turn, and the contours.
+mean, period, range and net change, harmonics-to-noise ratio, level mean and
+range, loudness peaks, and the formants of the longest voiced region.
+
+The pitch period is one divided by the fundamental frequency: the time a
+single cycle of the vocal folds takes, quoted to a hundredth of a millisecond
+because at a hundred hertz a period is only about ten milliseconds long. It is
+given for the median and as a range. The range runs the opposite way round
+from the pitch range, since a shorter period is a higher frequency.
+
+The VOWEL TABLE from the vowels command follows, so a description carries its
+vowels without your having to run vowels as well. Only the table comes across;
+the per-vowel blocks and the CSV stay with vowels, because a description
+already walks through every region one at a time.
+
+The prose DESCRIPTION comes last: the overview, every region in turn, and the
+contours.
 
 Voice onset time is measured from the release to the voicing that follows it.
 The release is the run of non-silent, non-voiced regions immediately before

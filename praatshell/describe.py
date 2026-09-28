@@ -332,8 +332,8 @@ def guess_region(region, frames):
         g.claim = f"a vowel, closest to {name}"
         g.runner_up = runner_up
         g.note(
-            f"F1 {f1:.0f} and F2 {f2:.0f} hertz are nearest the reference values "
-            f"for {name}."
+            f"F1 {f1:.0f} hertz and F2 {f2:.0f} hertz are nearest the reference "
+            f"values for {name}."
         )
         if ratio > 0.8:
             g.downgrade(
@@ -516,6 +516,7 @@ VOWEL_COLUMNS = [
     ("f0_mean_hz", "F0"),
     ("f0_min_hz", "F0 min"),
     ("f0_max_hz", "F0 max"),
+    ("period_ms", "Period"),
     ("f1_hz", "F1"),
     ("f2_hz", "F2"),
     ("f3_hz", "F3"),
@@ -553,6 +554,7 @@ def vowel_rows(frames, regions):
             "f0_min": s.get("f0_min"),
             "f0_max": s.get("f0_max"),
             "f0_slope": s.get("f0_slope"),
+            "period": 1.0 / s["f0"] if s.get("f0") else None,
             "f1": s.get("f1"),
             "f2": s.get("f2"),
             "f3": s.get("f3"),
@@ -588,6 +590,7 @@ def vowel_csv_rows(rows):
             _num(r["f0"], 1),
             _num(r["f0_min"], 1),
             _num(r["f0_max"], 1),
+            _num(r["period"] * 1000 if r["period"] else None, 2),
             _num(r["f1"], 1),
             _num(r["f2"], 1),
             _num(r["f3"], 1),
@@ -622,26 +625,36 @@ def _table(headings, rows, align):
     ]
 
 
-def vowel_report(frames, regions, sound_name, start, end):
-    """The vowel table as report lines, plus the columns and rows for the CSV."""
-    rows = vowel_rows(frames, regions)
-    csv_rows = vowel_csv_rows(rows)
+def vowel_table(frames, regions, rows=None):
+    """The heading, the notes and the aligned table.
+
+    describe carries this too, so the two commands cannot drift apart: the
+    table is built here once and both reports print the same one.
+    """
+    rows = vowel_rows(frames, regions) if rows is None else rows
+    if not rows:
+        return [
+            "VOWEL TABLE",
+            "",
+            "No voiced region was found here, so there are no vowels to list.",
+        ]
     lines = [
         "VOWEL TABLE",
         "",
-        f"Sound: {sound_name}.",
-        f"Stretch described: {fmt.secs(start)} to {fmt.secs(end)}, "
-        f"lasting {fmt.duration(end - start)}.",
         f"Vowels found: {len(rows)}.",
         "",
-        "One row per voiced region. Times are in seconds, durations and voice "
-        "onset times in milliseconds, frequencies in hertz. An empty cell is a "
-        "measurement that could not be made.",
+        "One row per voiced region. Times are in seconds, durations, periods "
+        "and voice onset times in milliseconds, frequencies in hertz. An empty "
+        "cell is a measurement that could not be made.",
         "",
         "Dur runs from the onset of voicing to the offset of the formants. "
         "Voiced is the part of that the pitch tracker found a pitch in. The "
         "two differ when a vowel devoices into a voiceless consonant after it, "
         "which is ordinary in English and not a fault in the recording.",
+        "",
+        "Period is one divided by F0: the time a single cycle of the vocal "
+        "folds takes. It carries the same information as F0 and is given "
+        "because a waveform is measured in time, not in frequency.",
         "",
     ]
 
@@ -656,6 +669,7 @@ def vowel_report(frames, regions, sound_name, start, end):
             _cell(r["f0"]),
             _cell(r["f0_min"]),
             _cell(r["f0_max"]),
+            "" if r["period"] is None else f"{r['period'] * 1000:.2f}",
             _cell(r["f1"]),
             _cell(r["f2"]),
             _cell(r["f3"]),
@@ -663,7 +677,7 @@ def vowel_report(frames, regions, sound_name, start, end):
         ]
         for r in rows
     ]
-    lines += _table([h for _, h in VOWEL_COLUMNS], display, "rrrrrrrrrrrrl")
+    lines += _table([h for _, h in VOWEL_COLUMNS], display, "rrrrrrrrrrrrrl")
 
     lines += [
         "",
@@ -673,17 +687,27 @@ def vowel_report(frames, regions, sound_name, start, end):
         "and voiced fricatives, so a row is a vowel candidate, not a vowel.",
         "",
         "Voice onset time is measured from the noise immediately before the "
-        f"vowel, so a figure over {fmt.ms(VOT_IMPLAUSIBLE)} is marked below and "
-        "usually means that noise was not a stop release. Prevoicing does not "
-        "show: only a positive voice onset time can be found this way.",
-        "",
-        "VOWEL BY VOWEL",
-        "",
+        f"vowel, so a figure over {fmt.ms(VOT_IMPLAUSIBLE)} usually means that "
+        "noise was not a stop release. Prevoicing does not show: only a "
+        "positive voice onset time can be found this way.",
     ]
-    for r in rows:
-        lines += _vowel_block(r)
-        lines.append("")
-    return lines, [name for name, _ in VOWEL_COLUMNS], csv_rows
+    return lines
+
+
+def vowel_report(frames, regions, rows=None):
+    """The vowel table as report lines, plus the columns and rows for the CSV.
+
+    The sound and the stretch are not repeated here: every report carries them
+    already, in the header written around these lines.
+    """
+    rows = vowel_rows(frames, regions) if rows is None else rows
+    lines = vowel_table(frames, regions, rows)
+    if rows:
+        lines += ["", "VOWEL BY VOWEL", ""]
+        for r in rows:
+            lines += _vowel_block(r)
+            lines.append("")
+    return lines, [name for name, _ in VOWEL_COLUMNS], vowel_csv_rows(rows)
 
 
 def _cell(v):
@@ -724,6 +748,10 @@ def _vowel_block(r):
             f"  Pitch: mean {r['f0']:.0f} hertz, from {r['f0_min']:.0f} to "
             f"{r['f0_max']:.0f} hertz."
         )
+        lines.append(
+            f"  Pitch period: {r['period'] * 1000:.2f} milliseconds, the time one "
+            "cycle takes. Divide 1 by it to get the mean above."
+        )
         if r["f0_slope"]:
             lines.append(f"  Pitch slope: {r['f0_slope']:+.0f} hertz per second.")
     else:
@@ -746,7 +774,7 @@ def _vowel_block(r):
         guess = Guess(f"this is {r['nearest']}")
         guess.runner_up = r["runner_up"]
         guess.note(
-            f"F1 {r['f1']:.0f} and F2 {r['f2']:.0f} hertz are nearest the "
+            f"F1 {r['f1']:.0f} hertz and F2 {r['f2']:.0f} hertz are nearest the "
             "reference values for it, which are adult male averages."
         )
         if r["ambiguous"]:
@@ -843,8 +871,13 @@ def stats_list(frames, regions, start, end):
             f"  Pitch measurable in: {fmt.pct(f0.size / max(len(frames.f0), 1))} "
             "of frames.",
             f"  Pitch median: {np.median(f0):.0f} hertz.",
+            f"  Pitch period, median: {1000 / np.median(f0):.2f} milliseconds, "
+            "the time one cycle takes. Divide 1 by it to get the median above.",
             f"  Pitch mean: {f0.mean():.0f} hertz.",
             f"  Pitch range: {f0.min():.0f} to {f0.max():.0f} hertz.",
+            f"  Pitch period range: {1000 / f0.max():.2f} to "
+            f"{1000 / f0.min():.2f} milliseconds. A shorter period is a higher "
+            "frequency, so this range runs the opposite way round.",
             f"  Pitch net change: {slope:+.0f} hertz.",
         ]
     else:
@@ -881,6 +914,7 @@ def stats_list(frames, regions, start, end):
 def full_report(frames, regions, sound_name, start, end):
     lines = ["ACOUSTIC DESCRIPTION", ""]
     lines += stats_list(frames, regions, start, end)
+    lines += [""] + vowel_table(frames, regions)
     lines += ["", "DESCRIPTION", ""]
     lines += overview(frames, sound_name, start, end)
     lines += ["", f"The tool found {len(regions)} regions.", ""]
@@ -932,7 +966,7 @@ def whole_sound_summary(frames, regions, sound_name, source, texts=(), csvs=()):
             if s.get("f0"):
                 detail.append(f"F0 {s['f0']:.0f} hertz")
             if s.get("f1") and s.get("f2"):
-                detail.append(f"F1 {s['f1']:.0f}, F2 {s['f2']:.0f} hertz")
+                detail.append(f"F1 {s['f1']:.0f} hertz, F2 {s['f2']:.0f} hertz")
         elif region.kind != events.SILENCE and s.get("cog"):
             detail.append(f"energy centred at {s['cog']:.0f} hertz")
         if s.get("intensity_mean"):
@@ -1098,7 +1132,7 @@ def summary(frames, regions, start, end):
         if s.get("f1") and s.get("f2"):
             name, _, _ = _nearest_vowel(s["f1"], s["f2"])
             out.append(
-                f"The longest region is voiced, with F1 {s['f1']:.0f} and F2 "
-                f"{s['f2']:.0f} hertz, closest to {name}."
+                f"The longest region is voiced, with F1 {s['f1']:.0f} hertz and "
+                f"F2 {s['f2']:.0f} hertz, closest to {name}."
             )
     return out

@@ -396,14 +396,11 @@ class Shell(cmd.Cmd):
 
     def _vowels(self, suffix=""):
         frames, regions = self.analysed()
-        start, end = self.session.selection()
         rows = describe.vowel_rows(frames, regions)
         self.say(*describe.vowel_summary(rows))
         if not rows:
             return
-        lines, columns, csv_rows = describe.vowel_report(
-            frames, regions, self.session.current, start, end
-        )
+        lines, columns, csv_rows = describe.vowel_report(frames, regions, rows)
         self.write_report(
             lines,
             suffix=f"vowels_{suffix}" if suffix else "vowels",
@@ -538,7 +535,10 @@ class Shell(cmd.Cmd):
                 lines.append(
                     f"  Closest reference vowel: {name}. Next closest: {runner}."
                 )
-                spoken.append(f"Region {i}: F1 {f1:.0f}, F2 {f2:.0f}, closest to {name}.")
+                spoken.append(
+                    f"Region {i}: F1 {f1:.0f} hertz, F2 {f2:.0f} hertz, closest "
+                    f"to {name}."
+                )
             if s.get("f2_spread"):
                 lines.append(
                     f"  F2 varies by {s['f2_spread']:.0f} hertz across the region."
