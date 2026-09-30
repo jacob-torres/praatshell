@@ -119,15 +119,30 @@ it, not 1: 100 hertz is a period of 10 milliseconds, and 1000 divided by 10 is
 waveform is measured in time rather than in frequency, so it is the number to
 reach for when reading a wave off a spectrogram or an oscillogram.
 
-The table gives two durations. Dur runs from the onset of voicing to the
-offset of the formants, which is the vowel. Voiced is the part of that the
-pitch tracker found a pitch in. They differ when a vowel devoices at its end
-into a voiceless consonant, as the vowel in pat does before its final t: the
-pitch disappears while F1 and F2 carry on unchanged and the sound is still
-loud. Voicing alone would cut such a vowel short by 50 milliseconds or more,
-so the tail is followed for as long as the formants hold their place and the
-level stays up. Quote Dur as the vowel's duration; Voiced is there so you can
-see how much of it was modal.
+Start, End and Dur are read the way a person reads Praat's window. Start is
+the release of the stop before the vowel, Dur runs from there to End, and so
+it includes the voice onset time. Voicing is where the vowel's own voicing
+begins and Vowel is the duration from there to End, without the VOT. After a
+pause, where there is no release, Start and Voicing are the same instant.
+
+End is the last moment high-frequency energy (above 2.5 kilohertz) is visible
+in the spectrogram, at Praat's 50 decibel dynamic range. What follows the
+vowel decides where that is:
+
+  Before a voiced stop (pad, bad) the vowel stops at a step into a closure
+  that keeps a voicing bar, and that step is the end.
+
+  Before a voiceless stop (pat, bat) the vowel devoices and the closure goes
+  silent. Breath or release noise may follow the silent closure, and the eye
+  counts it as part of the vowel, so End includes it. Formants end is where
+  the formants stopped before that noise, and Voiced is the part the pitch
+  tracker found a pitch in. All three can differ by tens of milliseconds.
+
+The After column says which kind of closure followed: voiced or voiceless. To
+end vowels at the first offset instead, set COUNT_RELEASE_NOISE to False at
+the top of praatshell/boundaries.py. For a vowel with little energy above 2.5
+kilohertz, such as a rounded back vowel, the spectrogram cannot be traced and
+the end falls back on the pitch tracker plus the formants, as before.
 
 A row is a vowel candidate, not a vowel: nasals, laterals and voiced
 fricatives are voiced too, so check the rows against what you know was said.
@@ -204,11 +219,21 @@ be found this way: prevoicing does not show.
 Where that run starts is then settled on the waveform rather than on the
 region boundary. Regions are drawn from Praat's intensity contour, whose
 window is 43 milliseconds wide at a 75 hertz pitch floor, so a boundary can
-sit up to 21 milliseconds before the event it marks. A release is a step
-change in the samples themselves, so the samples place it far more precisely:
-in pat the contour put the release at 0.676 seconds, while the waveform jumps
-thirty-fold at 0.690. Voicing onset stays on the frame grid, so a VOT is only
-as fine as the 10 millisecond frame spacing at that end.
+sit up to 21 milliseconds before the event it marks. The release is a step
+change in the samples themselves: it is the first rise out of the quiet in
+the high-frequency band, placed on the raw samples. The voicing onset is the
+first pulse of the run of evenly spaced pulses that carries on into the
+vowel, which is how the irregular pulses Praat finds in aspiration noise, and
+the vowel the frames called voiced late, are told apart from the real onset.
+Both are placed to about a millisecond, which a 10 millisecond VOT needs.
+These rules were checked against Praat measurements of pat, pad, bat and bad
+in Jacob-Practice.Collection: VOT 106, 110, 11 and 12 milliseconds against
+105, 108, 11 and 16 read in Praat, and ends within 4 milliseconds.
+
+The same measurements were tried as a traditional Praat script run through
+parselmouth. It gives identical offsets, being the same engine, and a worse
+onset unless it also has the pulse-spacing rule above, so the Python route is
+kept.
 
 describe reports the VOT of the first vowel in the stretch. vowels reports it
 for every vowel. A figure over 120 milliseconds is flagged in the report,

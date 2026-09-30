@@ -11,7 +11,7 @@ import datetime
 
 import numpy as np
 
-from . import analysis, events, fmt
+from . import analysis, boundaries, events, fmt
 
 # Adult male averages (Peterson and Barney). Formants scale with vocal tract
 # length, so these fit a smaller or larger speaker badly - which is exactly why
@@ -425,11 +425,13 @@ def vot_at(frames, regions, index):
     what identifies it - its position is. Silence in between means the two
     events belong to different syllables, and no VOT is measured across it.
 
-    The run's own start is only as precise as the intensity contour that drew
-    it, so the release transient is looked for in the waveform and used
-    instead when there is one. Only a positive VOT can be found this way:
-    prevoicing sits inside the voiced region itself and leaves no separate
-    release to anchor on.
+    The run only says roughly where to look, because it is as coarse as the
+    intensity contour that drew it. The release itself is then placed on the
+    waveform, and the voicing onset on the first pulse of the run of evenly
+    spaced pulses that carries on into the vowel (see boundaries.py), so a
+    voice onset time of 10 milliseconds is not lost in 10 millisecond frames.
+    Only a positive VOT can be found this way: prevoicing sits inside the
+    voiced region itself and leaves no separate release to anchor on.
     """
     i = index - 1
     if i < 0:
@@ -439,10 +441,17 @@ def vot_at(frames, regions, index):
     while i > 0 and regions[i - 1].kind not in (events.SILENCE, events.VOICED):
         i -= 1
     release = regions[i]
-    onset = regions[index].start
-    anchor = events.find_burst(frames.sound, release.start, onset)
-    if anchor is None or not release.start <= anchor < onset:
-        anchor = release.start
+    bounds = boundaries.bounds(frames)
+    onset = bounds.onset(regions[index].start, regions[index].end, release.start)
+    anchor = None
+    if onset is not None:
+        anchor = bounds.release(onset, release.start)
+    else:
+        onset = regions[index].start
+    if anchor is None:
+        anchor = events.find_burst(frames.sound, release.start, onset)
+        if anchor is None or not release.start <= anchor < onset:
+            anchor = release.start
     return VOT(onset - anchor, release, anchor, onset)
 
 
@@ -458,8 +467,8 @@ def vot(frames, regions):
     return vot_at(frames, regions, first)
 
 
-def vowel_end(frames, regions, index):
-    """Where the vowel at index really ends, past the frames that lost voicing.
+def tracker_end(frames, regions, index):
+    """Where the vowel at index ends by the tracker, past the frames that lost voicing.
 
     A vowel before a voiceless stop devoices at its end: the pitch tracker
     gives up while F1 and F2 carry on unchanged and the sound is still loud.
@@ -504,6 +513,47 @@ def vowel_end(frames, regions, index):
     return float(min(frames.times[i] if i < len(frames.times) else limit, limit))
 
 
+def _ends(frames, regions, index):
+    """The signal-level offsets for the vowel at index, or None."""
+    onset = vowel_onset(frames, regions, index)
+    limit = next(
+        (r.start for r in regions[index + 1 :] if r.kind == events.VOICED),
+        frames.window[1],
+    )
+    return boundaries.bounds(frames).ends(
+        onset, limit, tracker_end(frames, regions, index)
+    )
+
+
+def vowel_onset(frames, regions, index):
+    """Where steady voicing begins for the vowel at index."""
+    v = vot_at(frames, regions, index)
+    if v:
+        return v.onset
+    region = regions[index]
+    earlier = [r.end for r in regions[:index] if r.kind == events.VOICED]
+    found = boundaries.bounds(frames).onset(
+        region.start, region.end, max(earlier, default=frames.window[0])
+    )
+    return region.start if found is None else found
+
+
+def vowel_end(frames, regions, index):
+    """Where the vowel at index ends, as a person reads it off Praat's window.
+
+    That is the last moment high-frequency energy shows in the spectrogram. A
+    vowel before a voiced stop stops at a step into a voiced closure. A vowel
+    before a voiceless stop devoices, and any breath or release noise that
+    follows the silent closure is counted in, as the eye counts it; vowel_ends
+    has the end of the formants before it. When the spectrogram gives no
+    answer, the tracker-based end from tracker_end is used instead.
+    """
+    ends = _ends(frames, regions, index)
+    if ends is None:
+        return tracker_end(frames, regions, index)
+    return ends.last if boundaries.COUNT_RELEASE_NOISE else ends.first
+
+
 # --- the vowel table --------------------------------------------------
 
 VOWEL_COLUMNS = [
@@ -511,8 +561,12 @@ VOWEL_COLUMNS = [
     ("start_s", "Start"),
     ("end_s", "End"),
     ("duration_ms", "Dur"),
+    ("voicing_start_s", "Voicing"),
+    ("vowel_ms", "Vowel"),
+    ("formant_end_s", "Formants end"),
     ("voiced_ms", "Voiced"),
     ("vot_ms", "VOT"),
+    ("closure_after", "After"),
     ("f0_mean_hz", "F0"),
     ("f0_min_hz", "F0 min"),
     ("f0_max_hz", "F0 max"),
@@ -537,12 +591,23 @@ def vowel_rows(frames, regions):
             continue
         s = r.stats
         v = vot_at(frames, regions, i)
+        ends = _ends(frames, regions, i)
         end = vowel_end(frames, regions, i)
+        onset = vowel_onset(frames, regions, i)
+        # Praat is read from the release, so a vowel that has one starts
+        # there and its duration includes the voice onset time. Without a
+        # release, such as after a pause, it starts where the voicing does.
+        start = v.anchor if v else onset
         row = {
             "number": len(rows) + 1,
-            "start": frames.absolute(r.start),
+            "start": frames.absolute(start),
             "end": frames.absolute(end),
-            "duration": end - r.start,
+            "duration": end - start,
+            "voicing_start": frames.absolute(onset),
+            "vowel_duration": end - onset,
+            "formant_end": frames.absolute(ends.first if ends else end),
+            "tail_noise": ends.tail if ends else None,
+            "closure": ends.closure if ends else None,
             "voiced_end": frames.absolute(r.end),
             "voiced_duration": r.duration,
             "tail": end - r.end,
@@ -585,8 +650,12 @@ def vowel_csv_rows(rows):
             _num(r["start"], 3),
             _num(r["end"], 3),
             _num(r["duration"] * 1000, 1),
+            _num(r["voicing_start"], 3),
+            _num(r["vowel_duration"] * 1000, 1),
+            _num(r["formant_end"], 3),
             _num(r["voiced_duration"] * 1000, 1),
             _num(r["vot"] * 1000 if r["vot"] is not None else None, 1),
+            r["closure"] or "",
             _num(r["f0"], 1),
             _num(r["f0_min"], 1),
             _num(r["f0_max"], 1),
@@ -647,10 +716,22 @@ def vowel_table(frames, regions, rows=None):
         "and voice onset times in milliseconds, frequencies in hertz. An empty "
         "cell is a measurement that could not be made.",
         "",
-        "Dur runs from the onset of voicing to the offset of the formants. "
-        "Voiced is the part of that the pitch tracker found a pitch in. The "
-        "two differ when a vowel devoices into a voiceless consonant after it, "
-        "which is ordinary in English and not a fault in the recording.",
+        "Start is the release of the stop before the vowel, read off the "
+        "waveform, and Dur runs from there to End, which is how Praat's "
+        "window is read: it includes the voice onset time. Voicing is where "
+        "the vowel's own voicing begins, so Vowel, from Voicing to End, is "
+        "the vowel without the VOT. With no release before it, Start and "
+        "Voicing are the same instant.",
+        "",
+        "End is the last moment high-frequency energy shows in the "
+        "spectrogram. Before a voiced stop that is where the formants stop. "
+        "Before a voiceless stop the vowel devoices, the closure is silent, "
+        "and breath or release noise may follow it; that noise is counted in "
+        "End, and Formants end is where the formants stopped before it. "
+        "After says whether the closure that follows keeps a voicing bar "
+        "(voiced) or goes silent (voiceless). Voiced is the part of the "
+        "vowel the pitch tracker found a pitch in, which is shorter than the "
+        "vowel when it devoices into a voiceless consonant.",
         "",
         "Period is the time a single cycle of the vocal folds takes, in "
         "milliseconds. It is one second divided by F0, so to get the "
@@ -667,8 +748,12 @@ def vowel_table(frames, regions, rows=None):
             f"{r['start']:.3f}",
             f"{r['end']:.3f}",
             f"{r['duration'] * 1000:.0f}",
+            f"{r['voicing_start']:.3f}",
+            f"{r['vowel_duration'] * 1000:.0f}",
+            f"{r['formant_end']:.3f}",
             f"{r['voiced_duration'] * 1000:.0f}",
             "" if r["vot"] is None else f"{r['vot'] * 1000:.0f}",
+            r["closure"] or "",
             _cell(r["f0"]),
             _cell(r["f0_min"]),
             _cell(r["f0_max"]),
@@ -680,7 +765,7 @@ def vowel_table(frames, regions, rows=None):
         ]
         for r in rows
     ]
-    lines += _table([h for _, h in VOWEL_COLUMNS], display, "rrrrrrrrrrrrrl")
+    lines += _table([h for _, h in VOWEL_COLUMNS], display, "rrrrrrrrrrlrrrrrrrrrl")
 
     lines += [
         "",
@@ -732,6 +817,27 @@ def _vowel_block(r):
         f"Vowel {r['number']}: {fmt.secs(r['start'])} to {fmt.secs(r['end'])}, "
         f"lasting {fmt.duration(r['duration'])}.",
     ]
+    if abs(r["voicing_start"] - r["start"]) > 5e-4:
+        lines.append(
+            f"  Voicing begins at {fmt.secs(r['voicing_start'])}, so the vowel "
+            f"without its voice onset time lasts {fmt.duration(r['vowel_duration'])}."
+        )
+    if r["closure"] == "voiced":
+        lines.append(
+            f"  The formants stop at {fmt.secs(r['formant_end'])}, and the closure "
+            "after them keeps a voicing bar: the vowel ends at a voiced consonant."
+        )
+    elif r["closure"] == "voiceless":
+        lines.append(
+            f"  The formants stop at {fmt.secs(r['formant_end'])} and the closure "
+            "after them is silent: the vowel ends at a voiceless consonant."
+        )
+        if r["tail_noise"]:
+            a, b = r["tail_noise"]
+            lines.append(
+                f"  Breath or release noise follows the closure, "
+                f"{fmt.duration(b - a)} of it, and is counted in the end of the vowel."
+            )
     if r["tail"] > 1e-6:
         lines.append(
             f"  Voicing stops at {fmt.secs(r['voiced_end'])}, "
