@@ -16,7 +16,7 @@ from . import (analysis, audio, describe, edit, events, fmt, praatbridge, report
 from .session import Session, SessionError
 
 HELP = [
-    ("load FILE", "Load a .wav, or every sound inside a Praat .Collection."),
+    ("load FILE", "Load a .wav, or every sound inside a Praat .Collection, from the sounds folder."),
     ("list", "Say which sounds are loaded."),
     ("use NAME", "Make a different loaded sound the current one."),
     ("info", "Duration, sampling frequency, channels and peak level."),
@@ -223,11 +223,22 @@ class Shell(cmd.Cmd):
 
     # --- loading ------------------------------------------------------
 
+    def _sound_path(self, name):
+        """Where load looks: the sounds folder beside the package, whatever the
+        working directory. A full path is left alone, and a leading sounds/ that
+        the user typed out of habit is not doubled."""
+        if os.path.isabs(name):
+            return name
+        for prefix in ("sounds/", "sounds\\"):
+            if name.startswith(prefix):
+                name = name[len(prefix):]
+        return os.path.join(self.root, "sounds", name)
+
     def do_load(self, arg):
         """load FILE. A .wav, or every sound inside a Praat .Collection."""
         if not arg.strip():
             raise SessionError("Say which file to load, for example load pat.wav.")
-        path = 'sounds/' + arg.strip().strip('"')
+        path = self._sound_path(arg.strip().strip('"'))
         names = self.session.load(path)
         for name in names:
             self.sources[name] = path

@@ -69,7 +69,10 @@ A FIRST SESSION
     describe
 
 load accepts a .wav file, or a Praat .Collection, in which case every sound
-inside it is loaded under its own name.
+inside it is loaded under its own name. It looks in the sounds folder, so type
+load Sept16-1.Collection, not the folder name. A full path, such as
+C:\Recordings\pat.wav, is used as it stands. The sounds folder is not kept in
+git, so recordings stay off the public repository.
 
 describe writes a full report and speaks a short summary. events gives just the
 timeline. autoseg turns that timeline into numbered segments you can select,
