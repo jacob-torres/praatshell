@@ -227,7 +227,7 @@ class Shell(cmd.Cmd):
         """load FILE. A .wav, or every sound inside a Praat .Collection."""
         if not arg.strip():
             raise SessionError("Say which file to load, for example load pat.wav.")
-        path = arg.strip().strip('"')
+        path = 'sounds/' + arg.strip().strip('"')
         names = self.session.load(path)
         for name in names:
             self.sources[name] = path
