@@ -182,6 +182,77 @@ column. It never names a place of articulation: one number cannot carry a
 decision that needs the formant transitions into the vowel as well.
 
 
+THE SPECTROGRAM
+
+"spectrogram" puts the spectrogram picture into words and measures what is in
+it. It works on the current selection. With no options it does four things:
+
+    summary    What the picture shows, region by region: where the dark bands
+               are, how high the energy reaches, whether there is a voicing
+               bar, and where the darkest point is.
+    power      The power spectrum, averaged over the selection, or at one
+               instant with "at". Strongest narrow peaks, broad peaks that
+               follow the formants, centre of gravity, standard deviation,
+               skewness, kurtosis, 85 and 95 percent roll-off, spectral slope,
+               alpha ratio and the energy in each band.
+    formants   F1 to Fn for every voiced region, each with its bandwidth, its
+               value a quarter, half and three quarters of the way through, and
+               whether it rises, falls or stays level. Plus a frame-by-frame
+               track in the CSV.
+    harmonics  The harmonics of the voice at the middle of each voiced region:
+               frequency and level of each, H1 minus H2, H1 minus A1, A2 and A3,
+               and the corrected H1* minus H2*.
+
+Name the sections you want and you get only those:
+
+    spectrogram formants 4
+    spectrogram power at 0.25
+    spectrogram harmonics 12 narrow
+
+The options, which can come in any order:
+
+    wide, narrow     Window 5 or 30 milliseconds. Wide shows formants; narrow
+                     separates the harmonics. The summary says which you have
+                     and whether the pitch is high enough to be resolved.
+    window MS        Any window length, in milliseconds.
+    maxfreq HZ       Top of the picture. Default 5000.
+    range DB         Dynamic range. Default 50. Anything weaker than that
+                     below the darkest point would be drawn white.
+    preemph DB       Boost per octave above 1000 hertz. Default 6, which is
+                     what Praat draws by default. 0 gives the raw levels.
+    formants N       How many formants to look for. Default is the "formants"
+                     setting, 5. Also ceiling HZ, the highest formant to
+                     look for; 5 formants to 5500 hertz is the usual choice
+                     for a female voice, and 5 to 5000 for a male one. These
+                     work like Praat's own two settings, but here they apply
+                     to this command only: use set to change them for the
+                     whole session.
+    harmonics N      How many harmonics to measure. Default 10.
+    at TIME          One instant, for power and harmonics. It has to fall
+                     inside the selection.
+    f0 HZ            Use this pitch instead of the measured one when locating
+                     harmonics. Useful when the pitch tracker slips an octave.
+    pitchfloor HZ, pitchceiling HZ
+                     Pitch range for this command only.
+    step MS          Spacing of the frame-by-frame formant track. Default 10.
+    peaks N          How many peaks and bands to list. Default 6.
+
+The reply is short. The .txt in reports holds every number, and the CSVs hold the
+tables: the region summary, the power spectrum itself, its peaks and statistics,
+the formants by region, the formant track, every harmonic, and the harmonic
+measures. Each CSV is named with your options, so spectrogram formants 4 and
+spectrogram formants 5 do not overwrite each other.
+
+Things to keep in mind. Formants are the median over the middle half of a
+voiced region, so a short vowel between stops may include some transition; use
+the track CSV to see the movement. The average power spectrum of a selection
+that covers a vowel and a fricative is a mixture, so select one region first.
+H1* and H2* are corrected with the standard resonance formula for the formants
+found at that moment, and are only as good as those formants. Narrow peaks in
+the power spectrum are only separate harmonics if the window is long enough:
+with a 25 millisecond window that means a pitch of roughly 100 hertz or above.
+
+
 WHAT A DESCRIBE REPORT HOLDS
 
 The report opens with MEASUREMENTS: a plain list, one number per line, that

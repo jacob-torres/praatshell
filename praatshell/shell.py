@@ -11,7 +11,8 @@ import os
 import numpy as np
 import parselmouth
 
-from . import analysis, audio, describe, edit, events, fmt, praatbridge, report, segments
+from . import (analysis, audio, describe, edit, events, fmt, praatbridge, report,
+               segments, spectrogram)
 from .session import Session, SessionError
 
 HELP = [
@@ -40,6 +41,7 @@ HELP = [
     ("intensity [COMMAND]", "Loudness over the selection."),
     ("spectrum [COMMAND]", "Where energy sits in frequency."),
     ("slice TIME", "The strongest frequencies at one instant."),
+    ("spectrogram [OPTIONS]", "The spectrogram in words, plus power spectrum, formants and harmonics."),
     ("compare A B", "Compare two segments, or two loaded sounds."),
     ("", ""),
     ("autoseg", "Propose segment boundaries from the region timeline."),
@@ -735,6 +737,31 @@ class Shell(cmd.Cmd):
             lines,
             suffix=f"slice{time * 1000:.0f}ms",
             tables=[(None,) + describe.slice_csv(time, peaks, cog)],
+        )
+
+    def do_spectrogram(self, arg):
+        """spectrogram [OPTIONS]. The spectrogram in words, with measurements.
+
+        With no options it gives a summary of the picture, the power spectrum,
+        every voiced region's formants and the harmonics at each one's midpoint.
+        Name sections to get only those: spectrogram formants 4, spectrogram
+        power at 0.25, spectrogram harmonics 12 narrow. Options are listed in
+        the README under THE SPECTROGRAM.
+        """
+        if arg.strip() == "help":
+            self.say(spectrogram.OPTIONS_HELP)
+            return
+        opts = spectrogram.parse(arg)
+        frames, regions = self.analysed()
+        start, end = self.session.selection()
+        result = spectrogram.run(
+            self.session.sound(), start, end, frames, regions,
+            self.session.current, opts,
+        )
+        self.say(*result.spoken)
+        tag = "-".join(arg.split()).replace(".", "p").replace(":", "-")
+        self.write_report(
+            result.lines, suffix="spectrogram", preview=tag, tables=result.tables
         )
 
     def do_compare(self, arg):
