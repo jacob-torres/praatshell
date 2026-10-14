@@ -23,6 +23,11 @@ def ms(dt):
     return f"{dt * 1000:.0f} milliseconds"
 
 
+def stamp(t):
+    """A moment in the recording, in milliseconds."""
+    return f"{t * 1000:.1f} milliseconds"
+
+
 def duration(dt):
     """Milliseconds below a second, seconds above."""
     return ms(dt) if dt < 1.0 else f"{dt:.3f} seconds"

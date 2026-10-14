@@ -329,7 +329,7 @@ stretch you want first, then run them.
 
 TIMES
 
-Times are in seconds, or in milliseconds with an ms suffix. These are the same:
+Times you type are in seconds, or in milliseconds with an ms suffix. These are the same:
 
     select 0.768 0.828
     select 768ms 828ms

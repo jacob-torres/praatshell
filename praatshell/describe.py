@@ -558,12 +558,12 @@ def vowel_end(frames, regions, index):
 
 VOWEL_COLUMNS = [
     ("vowel", "No."),
-    ("start_s", "Start"),
-    ("end_s", "End"),
+    ("start_ms", "Start"),
+    ("end_ms", "End"),
     ("duration_ms", "Dur"),
-    ("voicing_start_s", "Voicing"),
+    ("voicing_start_ms", "Voicing"),
     ("vowel_ms", "Vowel"),
-    ("formant_end_s", "Formants end"),
+    ("formant_end_ms", "Formants end"),
     ("voiced_ms", "Voiced"),
     ("vot_ms", "VOT"),
     ("closure_after", "After"),
@@ -647,12 +647,12 @@ def vowel_csv_rows(rows):
     for r in rows:
         out.append([
             r["number"],
-            _num(r["start"], 3),
-            _num(r["end"], 3),
+            _num(r["start"] * 1000, 1),
+            _num(r["end"] * 1000, 1),
             _num(r["duration"] * 1000, 1),
-            _num(r["voicing_start"], 3),
+            _num(r["voicing_start"] * 1000, 1),
             _num(r["vowel_duration"] * 1000, 1),
-            _num(r["formant_end"], 3),
+            _num(r["formant_end"] * 1000, 1),
             _num(r["voiced_duration"] * 1000, 1),
             _num(r["vot"] * 1000 if r["vot"] is not None else None, 1),
             r["closure"] or "",
@@ -712,8 +712,8 @@ def vowel_table(frames, regions, rows=None):
         "",
         f"Vowels found: {len(rows)}.",
         "",
-        "One row per voiced region. Times are in seconds, durations, periods "
-        "and voice onset times in milliseconds, frequencies in hertz. An empty "
+        "One row per voiced region. Times, durations, periods "
+        "and voice onset times are in milliseconds, frequencies in hertz. An empty "
         "cell is a measurement that could not be made.",
         "",
         "Start is the release of the stop before the vowel, read off the "
@@ -745,12 +745,12 @@ def vowel_table(frames, regions, rows=None):
     display = [
         [
             str(r["number"]),
-            f"{r['start']:.3f}",
-            f"{r['end']:.3f}",
+            f"{r['start'] * 1000:.1f}",
+            f"{r['end'] * 1000:.1f}",
             f"{r['duration'] * 1000:.0f}",
-            f"{r['voicing_start']:.3f}",
+            f"{r['voicing_start'] * 1000:.1f}",
             f"{r['vowel_duration'] * 1000:.0f}",
-            f"{r['formant_end']:.3f}",
+            f"{r['formant_end'] * 1000:.1f}",
             f"{r['voiced_duration'] * 1000:.0f}",
             "" if r["vot"] is None else f"{r['vot'] * 1000:.0f}",
             r["closure"] or "",
@@ -814,22 +814,22 @@ def _vowel_block(r):
     """One vowel, a fact per line, measurement kept apart from guesswork."""
     lines = [
         "MEASURED",
-        f"Vowel {r['number']}: {fmt.secs(r['start'])} to {fmt.secs(r['end'])}, "
+        f"Vowel {r['number']}: {fmt.stamp(r['start'])} to {fmt.stamp(r['end'])}, "
         f"lasting {fmt.duration(r['duration'])}.",
     ]
     if abs(r["voicing_start"] - r["start"]) > 5e-4:
         lines.append(
-            f"  Voicing begins at {fmt.secs(r['voicing_start'])}, so the vowel "
+            f"  Voicing begins at {fmt.stamp(r['voicing_start'])}, so the vowel "
             f"without its voice onset time lasts {fmt.duration(r['vowel_duration'])}."
         )
     if r["closure"] == "voiced":
         lines.append(
-            f"  The formants stop at {fmt.secs(r['formant_end'])}, and the closure "
+            f"  The formants stop at {fmt.stamp(r['formant_end'])}, and the closure "
             "after them keeps a voicing bar: the vowel ends at a voiced consonant."
         )
     elif r["closure"] == "voiceless":
         lines.append(
-            f"  The formants stop at {fmt.secs(r['formant_end'])} and the closure "
+            f"  The formants stop at {fmt.stamp(r['formant_end'])} and the closure "
             "after them is silent: the vowel ends at a voiceless consonant."
         )
         if r["tail_noise"]:
@@ -840,7 +840,7 @@ def _vowel_block(r):
             )
     if r["tail"] > 1e-6:
         lines.append(
-            f"  Voicing stops at {fmt.secs(r['voiced_end'])}, "
+            f"  Voicing stops at {fmt.stamp(r['voiced_end'])}, "
             f"{fmt.duration(r['tail'])} before the end: the vowel devoices into "
             f"the consonant after it while F1 and F2 hold their place. Voiced "
             f"for {fmt.duration(r['voiced_duration'])} of its "
@@ -851,7 +851,7 @@ def _vowel_block(r):
     else:
         lines.append(
             f"  Voice onset time: {fmt.ms(r['vot'])}, from the release at "
-            f"{fmt.secs(r['release'])}, labelled {events.PLAIN[r['release_kind']]}."
+            f"{fmt.stamp(r['release'])}, labelled {events.PLAIN[r['release_kind']]}."
         )
         if r["vot"] > VOT_IMPLAUSIBLE:
             lines.append(
@@ -944,8 +944,8 @@ def vowel_summary(rows):
 
 CONSONANT_COLUMNS = [
     ("consonant", "No."),
-    ("start_s", "Start"),
-    ("end_s", "End"),
+    ("start_ms", "Start"),
+    ("end_ms", "End"),
     ("duration_ms", "Dur"),
     ("kind", "Kind"),
     ("vot_ms", "VOT"),
@@ -1059,8 +1059,8 @@ def consonant_csv_rows(rows):
         out.append(
             [
                 r["number"],
-                _num(r["start"], 3),
-                _num(r["end"], 3),
+                _num(r["start"] * 1000, 1),
+                _num(r["end"] * 1000, 1),
                 _num(r["duration"] * 1000, 1),
                 CONSONANT_KIND[r["kind"]],
                 _num(r["vot"] * 1000 if r["vot"] is not None else None, 1),
@@ -1102,8 +1102,8 @@ def consonant_table(frames, regions, rows=None):
         "",
         f"Consonants found: {len(rows)}.",
         "",
-        "One row per region that is not a vowel. Times are in seconds, "
-        "durations and voice onset times in milliseconds, frequencies in "
+        "One row per region that is not a vowel. Times, "
+        "durations and voice onset times are in milliseconds, frequencies in "
         "hertz. CoG is the centre of gravity of the energy, the clearest "
         "clue to where in the mouth the constriction is: the further forward "
         "the constriction, the higher it usually sits. Zero X counts zero "
@@ -1124,8 +1124,8 @@ def consonant_table(frames, regions, rows=None):
     display = [
         [
             str(r["number"]),
-            f"{r['start']:.3f}",
-            f"{r['end']:.3f}",
+            f"{r['start'] * 1000:.1f}",
+            f"{r['end'] * 1000:.1f}",
             f"{r['duration'] * 1000:.0f}",
             CONSONANT_KIND[r["kind"]],
             "" if r["vot"] is None else f"{r['vot'] * 1000:.0f}",
@@ -1156,8 +1156,8 @@ def _consonant_block(r):
     """One consonant, a fact per line, measurement kept apart from guesswork."""
     lines = [
         "MEASURED",
-        f"Consonant {r['number']}: {fmt.secs(r['start'])} to "
-        f"{fmt.secs(r['end'])}, lasting {fmt.duration(r['duration'])}.",
+        f"Consonant {r['number']}: {fmt.stamp(r['start'])} to "
+        f"{fmt.stamp(r['end'])}, lasting {fmt.duration(r['duration'])}.",
         f"  Character: {events.PLAIN[r['kind']]}.",
     ]
     if r["vot"] is not None:
