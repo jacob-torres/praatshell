@@ -78,6 +78,19 @@ class Session:
         self.current = name
         self.sel = None
 
+    def step(self, delta):
+        """Move to the previous (-1) or next (+1) sound, wrapping at either end.
+
+        Returns the new name and how many sounds there are.
+        """
+        if not self.sounds:
+            raise SessionError("No sound is loaded. Use load followed by a filename.")
+        names = list(self.sounds)
+        index = names.index(self.current) if self.current in names else 0
+        name = names[(index + delta) % len(names)]
+        self.use(name)
+        return name, len(names)
+
     def sound(self, name=None):
         name = name or self.current
         if name is None:

@@ -19,6 +19,8 @@ HELP = [
     ("load FILE", "Load a .wav, or every sound inside a Praat .Collection, from the sounds folder."),
     ("list", "Say which sounds are loaded."),
     ("use NAME", "Make a different loaded sound the current one."),
+    ("next", "Switch to the next loaded sound and play it, wrapping round to the first."),
+    ("prev", "Switch to the previous loaded sound and play it, wrapping round to the last."),
     ("info", "Duration, sampling frequency, channels and peak level."),
     ("save NAME FILE", "Write a loaded sound to a .wav file."),
     ("undo", "Undo the last change to a sound."),
@@ -271,6 +273,24 @@ class Shell(cmd.Cmd):
         self.session.use(arg.strip())
         self.invalidate()
         self.say(f"Now working on {self.session.current}.")
+
+    def _step(self, delta):
+        name, count = self.session.step(delta)
+        self.invalidate()
+        if count == 1:
+            self.say(f"{name} is the only sound loaded.")
+        else:
+            place = list(self.session.sounds).index(name) + 1
+            self.say(f"Now working on {name}, sound {place} of {count}.")
+        self.play_result()  # honours autoplay off
+
+    def do_next(self, arg):
+        """next. Switch to the next loaded sound, wrapping to the first."""
+        self._step(1)
+
+    def do_prev(self, arg):
+        """prev. Switch to the previous loaded sound, wrapping to the last."""
+        self._step(-1)
 
     def do_info(self, arg):
         """info. Duration, sampling frequency, channels and peak level."""

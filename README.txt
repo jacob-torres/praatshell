@@ -74,6 +74,10 @@ load Sept16-1.Collection, not the folder name. A full path, such as
 C:\Recordings\pat.wav, is used as it stands. The sounds folder is not kept in
 git, so recordings stay off the public repository.
 
+next and prev step through the loaded sounds in the order they were loaded,
+play each one, and wrap round: next after the last sound goes to the first, and
+prev before the first goes to the last. autoplay off silences the playback.
+
 describe writes a full report and speaks a short summary. events gives just the
 timeline. autoseg turns that timeline into numbered segments you can select,
 play, measure and edit. autoseg followed by a number cuts the selection into
