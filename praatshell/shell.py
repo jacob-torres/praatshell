@@ -42,7 +42,7 @@ HELP = [
     ("formants [COMMAND]", "F1, F2 and F3 over the selection."),
     ("intensity [COMMAND]", "Loudness over the selection."),
     ("spectrum [COMMAND]", "Where energy sits in frequency."),
-    ("slice TIME", "The strongest frequencies at one instant."),
+    ("slice TIME [window MS]", "The strongest frequencies at one instant."),
     ("spectrogram [OPTIONS]", "The spectrogram in words, plus power spectrum, formants and harmonics."),
     ("compare A B", "Compare two segments, or two loaded sounds."),
     ("", ""),
@@ -745,19 +745,44 @@ class Shell(cmd.Cmd):
         )
 
     def do_slice(self, arg):
-        """slice TIME. The strongest frequencies at one instant."""
-        if not arg.strip():
-            raise SessionError("Say slice, then a time, for example slice 0.25.")
-        time = fmt.parse_time(arg.strip())
+        """slice TIME [window MS]. The strongest frequencies at one instant.
+
+        The window is the stretch of sound the spectrum is measured over:
+        25 milliseconds unless you say otherwise, for example slice 0.25 window 40.
+        A longer window separates harmonics; a shorter one blurs them but follows
+        quick changes.
+        """
+        tokens = arg.split()
+        if not tokens:
+            raise SessionError(
+                "Say slice, then a time, for example slice 0.25. Add window and a "
+                "length in milliseconds to change the window, for example "
+                "slice 0.25 window 40."
+            )
+        window = None
+        if len(tokens) > 1:
+            if len(tokens) != 3 or tokens[1] != "window":
+                raise SessionError(
+                    "After the time, say window and a length in milliseconds, "
+                    "for example slice 0.25 window 40."
+                )
+            try:
+                window = spectrogram._ms(tokens[2])
+            except (ValueError, SessionError):
+                raise SessionError("Say a number of milliseconds after window.")
+            if not 0.001 <= window <= 0.2:
+                raise SessionError("The window must be between 1 and 200 milliseconds.")
+        time = fmt.parse_time(tokens[0])
         snd = self.session.sound()
         if not 0 <= time <= snd.duration:
             raise SessionError(
                 f"That time is outside the sound, which is {snd.duration:.3f} seconds."
             )
-        peaks, cog, nyquist = analysis.spectral_peaks(snd, time)
+        used = window or analysis.WINDOW
+        peaks, cog, nyquist = analysis.spectral_peaks(snd, time, window=window)
         lines = [
             f"Spectral slice at {fmt.secs(time)}, measured over a "
-            f"{analysis.WINDOW * 1000:.0f} millisecond window.",
+            f"{used * 1000:.0f} millisecond window.",
             f"Strongest frequency components: "
             f"{fmt.join(f'{p:.0f} hertz' for p in peaks)}.",
             f"Centre of gravity {fmt.hz_plain(cog)}.",
@@ -766,7 +791,8 @@ class Shell(cmd.Cmd):
         self.say(*lines)
         self.write_report(
             lines,
-            suffix=f"slice{time * 1000:.0f}ms",
+            suffix=f"slice{time * 1000:.0f}ms"
+            + (f"_window{window * 1000:.0f}ms" if window else ""),
             tables=[(None,) + describe.slice_csv(time, peaks, cog)],
         )
 

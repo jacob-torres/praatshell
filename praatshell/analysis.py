@@ -301,11 +301,14 @@ def _bands_and_cog(spec, times, ranges):
     return bands, cog
 
 
-def spectral_peaks(sound, time, count=4, settings=None):
-    """The strongest frequency components at one instant."""
+def spectral_peaks(sound, time, count=4, settings=None, window=None):
+    """The strongest frequency components at one instant.
+
+    window is the analysis window in seconds; None means the default WINDOW.
+    """
     s = settings or SETTINGS
     nyquist = sound.sampling_frequency / 2
-    half = WINDOW / 2
+    half = (window or WINDOW) / 2
     start = max(0.0, time - half)
     end = min(sound.duration, time + half)
     part = sound.extract_part(from_time=start, to_time=end, preserve_times=False)

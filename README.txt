@@ -404,6 +404,13 @@ slice and compare are the exceptions. They already take arguments of their own
 - a time, and two names - so there is nowhere to put a second one. Select the
 stretch you want first, then run them.
 
+slice takes one optional extra, the window it measures over: slice 0.25 window 40
+measures 40 milliseconds around 0.25 seconds. Without it the window is 25
+milliseconds. A longer window separates harmonics; a shorter one blurs them but
+follows quick changes. The window can be 1 to 200 milliseconds. When you give
+one, it is added to the report's filename, so slices of the same instant with
+different windows do not overwrite each other.
+
 
 TIMES
 
